@@ -2,7 +2,7 @@
 # Component Makefile
 #
 
-COMPONENT_SRCDIRS := .
+COMPONENT_SRCDIRS := . wake_stub hwcrypto 
 
 #Linker scripts used to link the final application.
 #Warning: These linker scripts are only used when the normal app is compiled; the bootloader
