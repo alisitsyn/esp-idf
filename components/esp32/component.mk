@@ -4,6 +4,8 @@
 
 COMPONENT_SRCDIRS := . wake_stub hwcrypto 
 
+COMPONENT_ADD_INCLUDEDIRS += wake_stub/include
+COMPONENT_PRIV_INCLUDEDIRS += wake_stub/include_priv
 #Linker scripts used to link the final application.
 #Warning: These linker scripts are only used when the normal app is compiled; the bootloader
 #specifies its own scripts.

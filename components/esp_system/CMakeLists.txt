@@ -36,6 +36,7 @@ else()
                                     espcoredump
                         LDFRAGMENTS "linker.lf" "app.lf")
     add_subdirectory(port)
+    add_subdirectory(wake_stub)
 
     # After system initialization, `start_app` (and its other cores variant) is called.
     # This is provided by the user or from another component. Since we can't establish

@@ -25,6 +25,7 @@
 
 #include <stdint.h>
 #include "esp_sleep.h"		// for esp_sleep_pd_domain_t
+#include "esp_log.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,7 +36,7 @@ extern "C" {
  *
  * This function does not return.
  */
-void IRAM_ATTR esp_wsapi_deep_sleep_start() __attribute__((noreturn));
+void esp_wake_stub_deep_sleep_start() __attribute__((noreturn));
 
 /**
  * @brief Enter deep-sleep mode from deep sleep wake stub code 
@@ -51,14 +52,14 @@ void IRAM_ATTR esp_wsapi_deep_sleep_start() __attribute__((noreturn));
  *
  * @param time_in_us  deep-sleep time, unit: microsecond
  */
-void RTC_IRAM_ATTR esp_wsapi_deep_sleep(uint64_t time_in_us) __attribute__((noreturn));
+void esp_wake_stub_deep_sleep(uint64_t time_in_us) __attribute__((noreturn));
 
 /**
  * @brief Get the source which caused wakeup from sleep
  *
  * @return wakeup cause, or ESP_DEEP_SLEEP_WAKEUP_UNDEFINED if reset happened for reason other than deep sleep wakeup
  */
-esp_sleep_wakeup_cause_t RTC_IRAM_ATTR esp_wsapi_sleep_get_wakeup_cause();
+esp_sleep_wakeup_cause_t esp_wake_stub_sleep_get_wakeup_cause();
 
 /**
  * @brief Enable wakeup using multiple pins
@@ -89,7 +90,7 @@ esp_sleep_wakeup_cause_t RTC_IRAM_ATTR esp_wsapi_sleep_get_wakeup_cause();
  *      - ESP_ERR_INVALID_ARG if any of the selected GPIOs is not an RTC GPIO,
  *        or mode is invalid
  */
-esp_err_t RTC_IRAM_ATTR esp_wsapi_enable_ext1_wakeup(uint64_t mask, esp_sleep_ext1_wakeup_mode_t mode);
+esp_err_t esp_wake_stub_enable_ext1_wakeup(uint64_t mask, esp_sleep_ext1_wakeup_mode_t mode);
 
 /**
  * @brief Enable wakeup using a pin
@@ -115,13 +116,10 @@ esp_err_t RTC_IRAM_ATTR esp_wsapi_enable_ext1_wakeup(uint64_t mask, esp_sleep_ex
  *        or the mode is invalid
  *      - ESP_ERR_INVALID_STATE if wakeup triggers conflict
  */
-esp_err_t RTC_IRAM_ATTR esp_wsapi_enable_ext0_wakeup(gpio_num_t gpio_num, int level);
-
-//esp_err_t RTC_IRAM_ATTR esp_wsapi_sleep_pd_config(esp_sleep_pd_domain_t domain,
-//                                   esp_sleep_pd_option_t option);
+esp_err_t esp_wake_stub_enable_ext0_wakeup(gpio_num_t gpio_num, int level);
 
 // this function is shared just for debugging
-uint64_t RTC_IRAM_ATTR esp_wsapi_get_sleep_time_us();
+uint64_t esp_wake_stub_get_sleep_time_us();
 
 
 #ifdef __cplusplus

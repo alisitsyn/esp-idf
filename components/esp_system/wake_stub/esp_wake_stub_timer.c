@@ -15,102 +15,90 @@
 #include <stddef.h>
 #include <sys/lock.h>
 #include <sys/param.h>
-#include "esp_attr.h"            // for RTC_IRAM_ATTR attribute
+#include "esp_attr.h"                   // for RTC_IRAM_ATTR attribute
 #include "esp_err.h"
-#include "rom/cache.h"
-#include "rom/rtc.h"
-#include "rom/uart.h"
-#include "soc/cpu.h"
 #include "soc/rtc.h"
-#include "soc/rtc_cntl_reg.h"
 #include "soc/rtc_io_reg.h"
-#include "soc/timer_group_reg.h"     // for TIMG_WDTFEED_REG
-#include "soc/dport_reg.h"        // for __DPORT_REG
+#include "soc/rtc_cntl_reg.h"
 
-#include "wake_stub/esp_wake_stub_private.h"
+#ifdef CONFIG_IDF_TARGET_ESP32
+#include "esp32/rom/rtc.h"
+#elif CONFIG_IDF_TARGET_ESP32S2
+#include "esp32s2/rom/rtc.h"
+#endif
 
-void RTC_IRAM_ATTR wsapi_timer_wakeup_prepare();
+#include "esp_wake_stub_private.h"
 
-esp_err_t RTC_IRAM_ATTR esp_wsapi_enable_timer_wakeup(uint64_t time_in_us)
+esp_err_t esp_wake_stub_enable_timer_wakeup(uint64_t time_in_us)
 {
     // Get current wakeup options from RTC registers
-    wsapi_update_wakeup_options();
+    wake_stub_update_wakeup_options();
 
     // Set options for timer wakeup
-    wsapi_s_config.wakeup_triggers |= RTC_TIMER_TRIG_EN;
-    wsapi_s_config.sleep_duration = time_in_us;
+    wake_stub_s_config.wakeup_triggers |= RTC_TIMER_TRIG_EN;
+    wake_stub_s_config.sleep_duration = time_in_us;
     return ESP_OK;
 }
 
-void RTC_IRAM_ATTR esp_wsapi_deep_sleep(uint64_t time_in_us)
+void esp_wake_stub_deep_sleep(uint64_t time_in_us)
 {
     // Update configuration
-    wsapi_update_wakeup_options();
+    wake_stub_update_wakeup_options();
 
     CLEAR_PERI_REG_MASK(RTC_CNTL_STATE0_REG, RTC_CNTL_SLEEP_EN);
-    esp_wsapi_enable_timer_wakeup(time_in_us);
+    esp_wake_stub_enable_timer_wakeup(time_in_us);
     
-    // Preapare RTC timer for wakeup
-    wsapi_timer_wakeup_prepare();
+    // Prepare RTC timer for wakeup
+    wake_stub_timer_wakeup_prepare();
 
     // Set wakeup sources and go to sleep
-    wsapi_rtc_sleep_start(wsapi_s_config.wakeup_triggers, 0);
+    wake_stub_rtc_sleep_start(wake_stub_s_config.wakeup_triggers, 0);
 }
 
-inline __attribute__((always_inline))
-uint32_t RTC_IRAM_ATTR wsapi_clk_slowclk_cal_get()
+uint32_t wake_stub_clk_slowclk_cal_get()
 {
     // Get RTC_SLOW_CLK calibration value saved in the register
     return REG_READ(RTC_SLOW_CLK_CAL_REG);
 }
 
-inline __attribute__((always_inline))
-uint64_t RTC_IRAM_ATTR wsapi_time_us_to_slowclk(uint64_t time_in_us, uint32_t period)
-{
-    /* Overflow will happen in this function if time_in_us >= 2^45, which is about 400 days.
-     * TODO: fix overflow.
-     period = number of microseconds per RTC tick scaled by 2^19
-     */
-    return ((time_in_us * (1 << RTC_CLK_CAL_FRACT)) / period);
-}
-
-inline __attribute__((always_inline))
-uint64_t RTC_IRAM_ATTR wsapi_rtc_time_get()
+uint64_t wake_stub_rtc_time_get()
 {
     SET_PERI_REG_MASK(RTC_CNTL_TIME_UPDATE_REG, RTC_CNTL_TIME_UPDATE);
+#ifdef CONFIG_IDF_TARGET_ESP32
     while (GET_PERI_REG_MASK(RTC_CNTL_TIME_UPDATE_REG, RTC_CNTL_TIME_VALID) == 0) {
         ets_delay_us(1); // might take 1 RTC slowclk period, don't flood RTC bus
     }
     
     SET_PERI_REG_MASK(RTC_CNTL_INT_CLR_REG, RTC_CNTL_TIME_VALID_INT_CLR);
+#elif CONFIG_IDF_TARGET_ESP32S2
+    // Place code here to get timer value
+#endif
     uint64_t t = READ_PERI_REG(RTC_CNTL_TIME0_REG);
     t |= ((uint64_t) READ_PERI_REG(RTC_CNTL_TIME1_REG)) << 32;
     return t;
 }
 
-inline __attribute__((always_inline))
-void RTC_IRAM_ATTR wsapi_rtc_sleep_set_wakeup_time(uint64_t time)
+void wake_stub_rtc_sleep_set_wakeup_time(uint64_t time)
 {
+    // change to rtc_ll_wakeup_timer_set(uint64_t t)
     WRITE_PERI_REG(RTC_CNTL_SLP_TIMER0_REG, time & UINT32_MAX);
     WRITE_PERI_REG(RTC_CNTL_SLP_TIMER1_REG, time >> 32);
 }
 
-inline __attribute__((always_inline))
-void RTC_IRAM_ATTR wsapi_timer_wakeup_prepare()
+void wake_stub_timer_wakeup_prepare()
 {
     // Update wakeup options from RTC if needed 
-    wsapi_update_wakeup_options();
+    wake_stub_update_wakeup_options();
     
     // Get microseconds per RTC clock tick (scaled by 2^19)
-    uint32_t slow_clk_value = wsapi_clk_slowclk_cal_get();
+    uint32_t slow_clk_value = wake_stub_clk_slowclk_cal_get();
     
     // Calculate number of RTC clock ticks until wakeup
-    uint64_t rtc_count_delta = ((wsapi_s_config.sleep_duration * \
+    uint64_t rtc_count_delta = ((wake_stub_s_config.sleep_duration * \
                                 (1 << RTC_CLK_CAL_FRACT)) / slow_clk_value); 
-    //wsapi_time_us_to_slowclk(wsapi_s_config.sleep_duration, slow_clk_value);
     
     // Get current count
-    uint64_t rtc_curr_count = wsapi_rtc_time_get();
+    uint64_t rtc_curr_count = wake_stub_rtc_time_get();
 
-    wsapi_rtc_sleep_set_wakeup_time(rtc_curr_count + rtc_count_delta);
+    wake_stub_rtc_sleep_set_wakeup_time(rtc_curr_count + rtc_count_delta);
 }

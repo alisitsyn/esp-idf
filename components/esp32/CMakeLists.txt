@@ -25,6 +25,7 @@ else()
     # app_update is added here because cpu_start.c uses esp_ota_get_app_description() function.
     # esp_timer is added here because cpu_start.c uses esp_timer
     set(priv_requires app_trace app_update bootloader_support esp_system log mbedtls nvs_flash pthread
+<<<<<<< HEAD
         spi_flash vfs espcoredump esp_common perfmon esp_timer esp_ipc esp_pm)
 
     idf_component_register(SRCS "${srcs}"

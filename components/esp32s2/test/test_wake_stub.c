@@ -1,7 +1,11 @@
 #include "unity.h"
 #include "esp_system.h"
 #include <sys/time.h>               // for time measurement
+#ifdef CONFIG_IDF_TARGET_ESP32
 #include "esp32/rom/rtc.h"          // for rom rtc defines
+#elif CONFIG_IDF_TARGET_ESP32S2
+#include "esp32s2/rom/rtc.h"        // for rom rtc defines
+#endif
 #include "esp_log.h"                // for log write functionality
 #include "driver/rtc_io.h"          // for gpio configuration
 #include "esp_sleep.h"              // include sleep related functionality
@@ -32,26 +36,30 @@ static RTC_IRAM_ATTR void wake_stub_timer(void)
 {
     esp_default_wake_deep_sleep();
 
+    // Set the pointer of the new wake stub function.
+    // It will be checked in test to make sure the wake stub entered
+    REG_WRITE(RTC_ENTRY_ADDR_REG, (uint32_t)&wake_stub_timer);
+    set_rtc_memory_crc(); // update RTC memory CRC using ROM function
+    ets_printf(fmt, wake_count);
     sleep_time = esp_wake_stub_get_sleep_time_us();
     wake_cause = esp_wake_stub_sleep_get_wakeup_cause();
-
     if ((wake_count < WAKE_STUB_ENTER_COUNT) && (wake_cause == ESP_SLEEP_WAKEUP_TIMER)) {
         wake_count++;
     } else {
         return;
     }
-    ets_printf(fmt, wake_count);
-    // Set the pointer of the new wake stub function.
-    // It will be checked in test to make sure the wake stub entered
-    REG_WRITE(RTC_ENTRY_ADDR_REG, (uint32_t)&wake_stub_timer);
-    set_rtc_memory_crc(); // update RTC memory CRC using ROM function
-    esp_wake_stub_deep_sleep(1000000 * TIMER_TIMEOUT_SEC);
+    esp_wake_stub_deep_sleep_start();
+    //esp_wake_stub_deep_sleep(1000000 * TIMER_TIMEOUT_SEC);
 }
 
 static RTC_IRAM_ATTR void wake_stub_ext0(void)
 {
     esp_default_wake_deep_sleep();
-
+    // Set the pointer of the new wake stub function.
+    // It will be checked in test to make sure the wake stub entered
+    REG_WRITE(RTC_ENTRY_ADDR_REG, (uint32_t)&wake_stub_timer);
+    set_rtc_memory_crc(); // update RTC memory CRC using ROM function
+    ets_printf(fmt, wake_count);
     sleep_time = esp_wake_stub_get_sleep_time_us();
     wake_cause = esp_wake_stub_sleep_get_wakeup_cause();
 
@@ -60,7 +68,7 @@ static RTC_IRAM_ATTR void wake_stub_ext0(void)
     } else {
         return;
     }
-    ets_printf(fmt, wake_count);
+
     // Set the pointer of the new wake stub function.
     // It will be checked in test to make sure the wake stub entered
     REG_WRITE(RTC_ENTRY_ADDR_REG, (uint32_t)&wake_stub_ext0);
