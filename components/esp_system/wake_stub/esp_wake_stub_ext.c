@@ -30,8 +30,9 @@
 #include "driver/rtc_io.h"
 #include "esp_wake_stub_private.h"
 
+#define EXT_TAG "wake_stub_ext"
 
-RTC_RODATA_ATTR const int wake_stub_rtc_io_num_map[GPIO_PIN_COUNT] = {
+RTC_RODATA_ATTR int wake_stub_rtc_io_num_map[GPIO_PIN_COUNT] = {
 #ifdef CONFIG_IDF_TARGET_ESP32
     RTCIO_GPIO0_CHANNEL,    //GPIO0
     -1,//GPIO1
@@ -125,11 +126,10 @@ RTC_RODATA_ATTR const int wake_stub_rtc_io_num_map[GPIO_PIN_COUNT] = {
 #endif
 };
 
-
 // Get RTC IO index number by gpio number.
 static int wake_stub_io_number_get(gpio_num_t gpio_num)
 {
-    return wake_stub_rtc_io_num_map[gpio_num];
+    return wake_stub_rtc_io_num_map[gpio_num]; // 
 }
 
 void wake_stub_ext0_wakeup_prepare()
@@ -151,7 +151,7 @@ esp_err_t esp_wake_stub_enable_ext0_wakeup(gpio_num_t gpio_num, int level)
         return ESP_ERR_INVALID_ARG;
     }
     if (wake_stub_s_config.wakeup_triggers & (RTC_TOUCH_TRIG_EN | RTC_ULP_TRIG_EN)) {
-        ESP_RTC_LOGE("Conflicting wake-up triggers: touch / ULP");
+        ESP_RTC_LOGE(EXT_TAG, "Conflicting wake-up triggers: touch / ULP");
         return ESP_ERR_INVALID_STATE;
     }
     wake_stub_s_config.ext0_rtc_gpio_num = wake_stub_io_number_get(gpio_num);

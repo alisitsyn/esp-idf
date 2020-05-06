@@ -402,6 +402,39 @@ void esp_log_writev(esp_log_level_t level, const char* tag, const char* format, 
         }} while(0)
 /** @endcond */
 
+/**
+ * @brief Macro to output logs when from wake stab. log at ``ESP_LOG_ERROR`` level.
+ *
+ * Similar to `ESP_EARLY_LOGE`, the log level cannot be changed by `esp_log_level_set`.
+ *
+ * Usage: `ESP_RTC_LOGE(RTC_STR("my_tag"), "format", or `ESP_RTC_LOGE(TAG, "format", ...)`,
+ * where TAG is a char* that points to a str in the RTC memory.
+ *
+ * @note Placing log strings in RTC memory reduces available RTC memory, so only use when absolutely essential.
+ *
+ * @see ``ets_printf``,``ESP_LOGE``
+ */
+#define ESP_RTC_LOGE( tag, format, ... ) ESP_RTC_LOG_IMPL(RTC_STR(tag), format, ESP_LOG_ERROR,   E, ##__VA_ARGS__)
+/// macro to output logs when the cache is disabled at ``ESP_LOG_WARN`` level.  @see ``ESP_RTC_LOGW``,``ESP_LOGW``, ``ets_printf``
+#define ESP_RTC_LOGW( tag, format, ... ) ESP_RTC_LOG_IMPL(RTC_STR(tag), format, ESP_LOG_WARN,    W, ##__VA_ARGS__)
+/// macro to output logs when the cache is disabled at ``ESP_LOG_INFO`` level.  @see ``ESP_RTC_LOGI``,``ESP_LOGI``, ``ets_printf``
+#define ESP_RTC_LOGI( tag, format, ... ) ESP_RTC_LOG_IMPL(RTC_STR(tag), format, ESP_LOG_INFO,    I, ##__VA_ARGS__)
+/// macro to output logs when the cache is disabled at ``ESP_LOG_DEBUG`` level.  @see ``ESP_RTC_LOGD``,``ESP_LOGD``, ``ets_printf``
+#define ESP_RTC_LOGD( tag, format, ... ) ESP_RTC_LOG_IMPL(RTC_STR(tag), format, ESP_LOG_DEBUG,   D, ##__VA_ARGS__)
+/// macro to output logs when the cache is disabled at ``ESP_LOG_VERBOSE`` level.  @see ``ESP_RTC_LOGV``,``ESP_LOGV``, ``ets_printf``
+#define ESP_RTC_LOGV( tag, format, ... ) ESP_RTC_LOG_IMPL(RTC_STR(tag), format, ESP_LOG_VERBOSE, V, ##__VA_ARGS__)
+
+/** @cond */
+#define _ESP_LOG_RTC_LOG_FORMAT(letter, format)  RTC_STR(#letter " %s: " format "\n")
+
+#define ESP_RTC_LOG_IMPL(tag, format, log_level, log_tag_letter, ...) do {                   \
+        if (LOG_LOCAL_LEVEL >= log_level) {                                                  \
+            ets_printf(_ESP_LOG_RTC_LOG_FORMAT(log_tag_letter, format), tag, ##__VA_ARGS__); \
+        }} while(0)
+/** @endcond */
+
+
+
 #ifdef __cplusplus
 }
 #endif

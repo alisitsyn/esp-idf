@@ -30,10 +30,15 @@
 #include "esp32s2/rom/rtc.h"
 #endif
 
+#include "esp_sleep.h"
 #include "esp_wake_stub_sleep.h"
 #include "esp_wake_stub_private.h"
 
 #define WAKE_STUB_CONF_ACTIVE_MARKER 0x55555555
+
+#define CMN_TAG "wake_stub_common"
+
+#define CHECK_SRC(source, value, mask) ((wake_stub_s_config.wakeup_triggers & mask) && (source == value))
 
 wakestub_deep_sleep_config_t wake_stub_s_config = {
     .pd_options = { ESP_PD_OPTION_AUTO, ESP_PD_OPTION_AUTO, ESP_PD_OPTION_AUTO },
@@ -60,6 +65,31 @@ uint64_t esp_wake_stub_get_sleep_time_us()
     const uint64_t ticks_high = ticks >> 32;
     return ((ticks_low * cal) >> RTC_CLK_CAL_FRACT) +
             ((ticks_high * cal) << (32 - RTC_CLK_CAL_FRACT));
+}
+
+esp_err_t esp_wake_stub_disable_wakeup_source(esp_sleep_source_t source)
+{
+    // For most of sources it is enough to set trigger mask in local
+    // configuration structure. The actual RTC wake up options
+    // will be updated by esp_sleep_start().
+    if (source == ESP_SLEEP_WAKEUP_ALL) {
+        wake_stub_s_config.wakeup_triggers = 0;
+    } else if (CHECK_SRC(source, ESP_SLEEP_WAKEUP_TIMER, RTC_TIMER_TRIG_EN)) {
+        wake_stub_s_config.wakeup_triggers &= ~RTC_TIMER_TRIG_EN;
+        wake_stub_s_config.sleep_duration = 0;
+    } else if (CHECK_SRC(source, ESP_SLEEP_WAKEUP_EXT0, RTC_EXT0_TRIG_EN)) {
+        wake_stub_s_config.ext0_rtc_gpio_num = 0;
+        wake_stub_s_config.ext0_trigger_level = 0;
+        wake_stub_s_config.wakeup_triggers &= ~RTC_EXT0_TRIG_EN;
+    } else if (CHECK_SRC(source, ESP_SLEEP_WAKEUP_EXT1, RTC_EXT1_TRIG_EN)) {
+        wake_stub_s_config.ext1_rtc_gpio_mask = 0;
+        wake_stub_s_config.ext1_trigger_mode = 0;
+        wake_stub_s_config.wakeup_triggers &= ~RTC_EXT1_TRIG_EN;
+    } else {
+        ESP_RTC_LOGE(CMN_TAG, "Incorrect wakeup source (%d) to disable.", (int) source);
+        return ESP_ERR_INVALID_STATE;
+    }
+    return ESP_OK;
 }
 
 // Update local options from RTC set by deep sleep api calls 
@@ -92,15 +122,15 @@ esp_err_t wake_stub_update_wakeup_options()
         wake_stub_s_config.rtc_int_flags = REG_READ(RTC_CNTL_INT_ENA_REG);
         wake_stub_s_config.rtc_crc_reg = REG_READ(RTC_CNTL_STORE7_REG);
         
-        ESP_RTC_LOGD("wakeup_trig: 0x%.4x", wake_stub_s_config.wakeup_triggers);
-        ESP_RTC_LOGD("ext0_gpio_num: 0x%.4x", wake_stub_s_config.ext0_rtc_gpio_num);
-        ESP_RTC_LOGD("ext0_trigger_level: 0x%.4x", wake_stub_s_config.ext0_trigger_level);
-        ESP_RTC_LOGD("ext1_rtc_gpio_mask: 0x%.4x", wake_stub_s_config.ext1_rtc_gpio_mask);
-        ESP_RTC_LOGD("ext1_trigger_mode: 0x%.4x", wake_stub_s_config.ext1_trigger_mode);
-        ESP_RTC_LOGD("wake_stub_addr: 0x%x", wake_stub_s_config.wake_stub_addr);
-        ESP_RTC_LOGD("rtc_int_flags: 0x%x", wake_stub_s_config.rtc_int_flags);
-        ESP_RTC_LOGD("rtc_crc: 0x%x", wake_stub_s_config.rtc_crc_reg);
-        ESP_RTC_LOGD("Sleep_time: %u", (uint32_t)esp_wake_stub_get_sleep_time_us());
+        ESP_RTC_LOGD(CMN_TAG, "wakeup_trig: 0x%.4x", wake_stub_s_config.wakeup_triggers);
+        ESP_RTC_LOGD(CMN_TAG, "ext0_gpio_num: 0x%.4x", wake_stub_s_config.ext0_rtc_gpio_num);
+        ESP_RTC_LOGD(CMN_TAG, "ext0_trigger_level: 0x%.4x", wake_stub_s_config.ext0_trigger_level);
+        ESP_RTC_LOGD(CMN_TAG, "ext1_rtc_gpio_mask: 0x%.4x", wake_stub_s_config.ext1_rtc_gpio_mask);
+        ESP_RTC_LOGD(CMN_TAG, "ext1_trigger_mode: 0x%.4x", wake_stub_s_config.ext1_trigger_mode);
+        ESP_RTC_LOGD(CMN_TAG, "wake_stub_addr: 0x%x", wake_stub_s_config.wake_stub_addr);
+        ESP_RTC_LOGD(CMN_TAG, "rtc_int_flags: 0x%x", wake_stub_s_config.rtc_int_flags);
+        ESP_RTC_LOGD(CMN_TAG, "rtc_crc: 0x%x", wake_stub_s_config.rtc_crc_reg);
+        ESP_RTC_LOGD(CMN_TAG, "Sleep_time: %u", (uint32_t)esp_wake_stub_get_sleep_time_us());
 
         wake_stub_s_config.init_flag = WAKE_STUB_CONF_ACTIVE_MARKER; // Set initialization marker
         result = ESP_ERR_NOT_FOUND;
@@ -201,16 +231,15 @@ uint32_t wake_stub_rtc_sleep_start(uint32_t wakeup_opt, uint32_t reject_opt)
     return reject;
 }
 
-inline void wake_stub_uart_tx_wait_idle(uint8_t uart_no) {
-    while(REG_GET_FIELD(UART_STATUS_REG(uart_no), UART_ST_UTX_OUT)) {
-        ;
-    }
+inline void esp_wake_stub_uart_tx_wait_idle(uint8_t uart_no)
+{
+    while(REG_GET_FIELD(UART_STATUS_REG(uart_no), UART_ST_UTX_OUT));
 }
 
 static uint32_t esp_wake_stub_sleep_start(uint32_t pd_flags)
 {
     // Flush UARTs so that output is not lost due to APB frequency change
-    wake_stub_uart_tx_wait_idle(0);
+    esp_wake_stub_uart_tx_wait_idle(0);
 
     // Configure pins for external wake up
     if (wake_stub_s_config.wakeup_triggers & RTC_EXT0_TRIG_EN) {
@@ -219,7 +248,7 @@ static uint32_t esp_wake_stub_sleep_start(uint32_t pd_flags)
         wake_stub_ext1_wakeup_prepare();
     } else if (wake_stub_s_config.wakeup_triggers & RTC_ULP_TRIG_EN) {
         // Enable ULP wakeup
-        ESP_RTC_LOGE("Do not support ULP/touch");
+        ESP_RTC_LOGE(CMN_TAG, "Do not support ULP/touch");
     } else if ((wake_stub_s_config.wakeup_triggers & RTC_TIMER_TRIG_EN) &&
             wake_stub_s_config.sleep_duration > 0) {
         // Configure timer wakeup

@@ -121,6 +121,32 @@ esp_err_t esp_wake_stub_enable_ext0_wakeup(gpio_num_t gpio_num, int level);
 // this function is shared just for debugging
 uint64_t esp_wake_stub_get_sleep_time_us();
 
+/**
+ * @brief Disable wakeup source
+ *
+ * This function is used to deactivate wake up trigger for source
+ * defined as parameter of the function from wake stub function executed
+ * from first stage loader.
+ *
+ * @note This function does not modify wake up configuration in RTC.
+ *       It will be performed in esp_sleep_start function.
+ *
+ * See docs/sleep-modes.rst for details.
+ *
+ * @param source - number of source to disable of type esp_sleep_source_t
+ * @return
+ *      - ESP_OK on success
+ *      - ESP_ERR_INVALID_STATE if trigger was not active
+ */
+esp_err_t esp_wake_stub_disable_wakeup_source(esp_sleep_source_t source);
+
+/**
+ * @brief Wait while transmission is in progress
+ *
+ * This function is waiting while uart transmission is not completed.
+ *
+ */
+void esp_wake_stub_uart_tx_wait_idle(uint8_t uart_no);
 
 #ifdef __cplusplus
 }

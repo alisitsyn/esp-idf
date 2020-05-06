@@ -8,6 +8,7 @@
 #include "soc/soc.h"                // include access to soc macro
 #include "esp_wake_stub_sleep.h"    // for wake stub API access
 #include "esp_sleep.h"              // for deep sleep cause
+#include "sdkconfig.h"
 
 // Test notes:
 // This test case sequence checks behavior of wake stub API to go deep sleep
@@ -19,6 +20,7 @@
 #define TIMER_TIMEOUT_SEC 1
 
 #define TEST_EXT0_GPIO_PIN GPIO_NUM_13
+#define TEST_WS_TAG "TEST_WAKE_STUB"
 
 static RTC_DATA_ATTR int wake_count = 0;
 static RTC_DATA_ATTR esp_sleep_wakeup_cause_t wake_cause = ESP_SLEEP_WAKEUP_UNDEFINED;
@@ -40,11 +42,14 @@ static RTC_IRAM_ATTR void wake_stub_timer(void)
     } else {
         return;
     }
-    ets_printf(fmt, wake_count);
+
+    ESP_RTC_LOGI(TEST_WS_TAG, "Enter count: %d\n", wake_count);
+    esp_wake_stub_uart_tx_wait_idle(CONFIG_ESP_CONSOLE_UART_NUM);
     // Set the pointer of the new wake stub function.
     // It will be checked in test to make sure the wake stub entered
     REG_WRITE(RTC_ENTRY_ADDR_REG, (uint32_t)&wake_stub_timer);
     set_rtc_memory_crc(); // update RTC memory CRC using ROM function
+    esp_wake_stub_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
     esp_wake_stub_deep_sleep(1000000 * TIMER_TIMEOUT_SEC);
 }
 
@@ -60,11 +65,15 @@ static RTC_IRAM_ATTR void wake_stub_ext0(void)
     } else {
         return;
     }
-    ets_printf(fmt, wake_count);
+
+    ESP_RTC_LOGI(TEST_WS_TAG, "Enter count: %d\n", wake_count);
+    esp_wake_stub_uart_tx_wait_idle(CONFIG_ESP_CONSOLE_UART_NUM);
     // Set the pointer of the new wake stub function.
     // It will be checked in test to make sure the wake stub entered
     REG_WRITE(RTC_ENTRY_ADDR_REG, (uint32_t)&wake_stub_ext0);
     set_rtc_memory_crc(); // update RTC memory CRC
+    esp_wake_stub_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+    esp_wake_stub_enable_ext0_wakeup(GPIO_NUM_13, ESP_EXT0_WAKEUP_LEVEL_HIGH);
     esp_wake_stub_deep_sleep_start();
 }
 

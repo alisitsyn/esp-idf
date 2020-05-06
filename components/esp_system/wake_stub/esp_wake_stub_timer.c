@@ -68,7 +68,6 @@ uint64_t wake_stub_rtc_time_get()
     while (GET_PERI_REG_MASK(RTC_CNTL_TIME_UPDATE_REG, RTC_CNTL_TIME_VALID) == 0) {
         ets_delay_us(1); // might take 1 RTC slowclk period, don't flood RTC bus
     }
-    
     SET_PERI_REG_MASK(RTC_CNTL_INT_CLR_REG, RTC_CNTL_TIME_VALID_INT_CLR);
 #elif CONFIG_IDF_TARGET_ESP32S2
     // Place code here to get timer value
@@ -95,7 +94,7 @@ void wake_stub_timer_wakeup_prepare()
     
     // Calculate number of RTC clock ticks until wakeup
     uint64_t rtc_count_delta = ((wake_stub_s_config.sleep_duration * \
-                                (1 << RTC_CLK_CAL_FRACT)) / slow_clk_value); 
+                                (1 << RTC_CLK_CAL_FRACT)) / slow_clk_value);
     
     // Get current count
     uint64_t rtc_curr_count = wake_stub_rtc_time_get();

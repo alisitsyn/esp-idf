@@ -81,6 +81,8 @@
 // Allows to place data into RTC_FAST memory.
 #define RTC_FAST_ATTR _SECTION_ATTR_IMPL(".rtc.force_fast", __COUNTER__)
 
+#define RTC_STR(str) (__extension__({static const RTC_RODATA_ATTR char __c[] = (str); (const char *)&__c;}))
+
 // Forces data into noinit section to avoid initialization after restart.
 #define __NOINIT_ATTR _SECTION_ATTR_IMPL(".noinit", __COUNTER__)
 
