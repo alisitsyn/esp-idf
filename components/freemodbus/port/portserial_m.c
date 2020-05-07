@@ -65,6 +65,39 @@ static UCHAR ucUartNumber = UART_NUM_MAX - 1;
 static BOOL bRxStateEnabled = FALSE; // Receiver enabled flag
 static BOOL bTxStateEnabled = FALSE; // Transmitter enabled flag
 
+static SemaphoreHandle_t xMasterSemaRxHandle; // Rx blocking semaphore handle
+
+static BOOL xMBMasterPortRxSemaInit( void )
+{
+    xMasterSemaRxHandle = xSemaphoreCreateBinary();
+    MB_PORT_CHECK((xMasterSemaRxHandle != NULL), FALSE , "%s: RX semaphore create failure.", __func__);
+    return TRUE;
+}
+
+static BOOL xMBMasterPortRxSemaTake( LONG lTimeOut )
+{
+    BaseType_t xStatus = pdTRUE;
+    xStatus = xSemaphoreTake(xMasterSemaRxHandle, lTimeOut );
+    MB_PORT_CHECK((xStatus == pdTRUE), FALSE , "%s: RX semaphore take failure.", __func__);
+    ESP_LOGV(MB_PORT_TAG,"%s:Take RX semaphore (%lu ticks).", __func__, lTimeOut);
+    return TRUE;
+}
+
+static BOOL xMBMasterRxSemaIsBusy( void )
+{
+    return (uxSemaphoreGetCount(xMasterSemaRxHandle) == 0) ? TRUE : FALSE;
+}
+
+static void vMBMasterRxSemaRelease( void )
+{
+    BaseType_t xStatus = pdFALSE;
+    if (!xMBMasterRxSemaIsBusy()) {
+        return;
+    }
+    xStatus = xSemaphoreGive(xMasterSemaRxHandle);
+    MB_PORT_CHECK((xStatus == pdTRUE), ; , "%s: RX semaphore release failure.", __func__);
+}
+
 void vMBMasterPortSerialEnable(BOOL bRxEnable, BOOL bTxEnable)
 {
     // This function can be called from xMBRTUTransmitFSM() of different task
@@ -75,6 +108,7 @@ void vMBMasterPortSerialEnable(BOOL bRxEnable, BOOL bTxEnable)
     }
     if (bRxEnable) {
         bRxStateEnabled = TRUE;
+        vMBMasterRxSemaRelease();
         vTaskResume(xMbTaskHandle); // Resume receiver task
     } else {
         vTaskSuspend(xMbTaskHandle); // Block receiver task
@@ -87,14 +121,15 @@ static USHORT usMBMasterPortSerialRxPoll(size_t xEventSize)
     BOOL xReadStatus = TRUE;
     USHORT usCnt = 0;
 
-    if (bRxStateEnabled) {
+    xReadStatus = xMBMasterPortRxSemaTake(1000);
+    if (xReadStatus) {
         while(xReadStatus && (usCnt++ <= MB_SERIAL_BUF_SIZE)) {
             // Call the Modbus stack callback function and let it fill the stack buffers.
             xReadStatus = pxMBMasterFrameCBByteReceived(); // callback to receive FSM
         }
         // The buffer is transferred into Modbus stack and is not needed here any more
-        uart_flush_input(ucUartNumber);
         ESP_LOGD(TAG, "Received data: %d(bytes in buffer)\n", (uint32_t)usCnt);
+        uart_flush_input(ucUartNumber);
     } else {
         ESP_LOGE(TAG, "%s: bRxState disabled but junk data (%d bytes) received. ", __func__, xEventSize);
     }
@@ -137,11 +172,16 @@ static void vUartTask(void* pvParameters)
                     // This flag set in the event means that no more
                     // data received during configured timeout and UART TOUT feature is triggered
                     if (xEvent.timeout_flag) {
+                        // Response is received but previous packet processing is pending
+                        // Do not wait completion of processing and just discard received data
+                        // as incorrect (fragmentation of response).
+                        if (xMBMasterRxSemaIsBusy()) {
+                            uart_flush_input(ucUartNumber);
+                            break;
+                        }
                         // Read received data and send it to modbus stack
                         usResult = usMBMasterPortSerialRxPoll(xEvent.size);
                         ESP_LOGD(TAG,"Timeout occured, processed: %d bytes", usResult);
-                        // Block receiver task until data is not processed
-                        vTaskSuspend(NULL);
                     }
                     break;
                 //Event of HW FIFO overflow detected
@@ -238,6 +278,9 @@ BOOL xMBMasterPortSerialInit( UCHAR ucPORT, ULONG ulBaudRate, UCHAR ucDataBits, 
     xErr = uart_set_rx_timeout(ucUartNumber, MB_SERIAL_TOUT);
     MB_PORT_CHECK((xErr == ESP_OK), FALSE,
             "mb serial set rx timeout failure, uart_set_rx_timeout() returned (0x%x).", xErr);
+
+    MB_PORT_CHECK((xMBMasterPortRxSemaInit()), FALSE,
+                "mb serial RX semaphore create fail.");
 
     // Set always timeout flag to trigger timeout interrupt even after rx fifo full
     uart_set_always_rx_timeout(ucUartNumber, true);
