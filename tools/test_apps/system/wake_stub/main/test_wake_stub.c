@@ -29,7 +29,6 @@
 
 #define TEST_WAKE_STUB_TAG "TEST_WAKE_STUB"
 
-//static RTC_RODATA_ATTR const char fmt_str[] = "Wake stub enter count: %d\n";
 static RTC_DATA_ATTR int wake_count = 0;
 static RTC_DATA_ATTR uint64_t sleep_time = 0;
 static RTC_DATA_ATTR uint8_t test_state = 0;
@@ -55,7 +54,7 @@ static RTC_IRAM_ATTR void wake_stub_ext0(void)
         return;
     }
 
-    ESP_RTC_LOGI("WAKE_STUB", "Enter count: %d\n", wake_count);
+    ESP_RTC_LOGI("Wake stab enter count: %d\n", wake_count);
     esp_wake_stub_uart_tx_wait_idle(CONFIG_ESP_CONSOLE_UART_NUM);
     set_rtc_memory_crc(); // update rtc memory CRC
     esp_wake_stub_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
@@ -78,7 +77,7 @@ static RTC_IRAM_ATTR void wake_stub_timer(void)
         return;
     }
     //ets_printf(fmt_str, wake_count);
-    ESP_RTC_LOGI("WAKE_STUB", "Enter count: %d\n", wake_count);
+    ESP_RTC_LOGI("Wake stab enter count: %d\n", wake_count);
     esp_wake_stub_uart_tx_wait_idle(CONFIG_ESP_CONSOLE_UART_NUM);
     set_rtc_memory_crc(); // update rtc memory CRC
     esp_wake_stub_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
@@ -119,7 +118,6 @@ static bool check_timer_wake_deep_sleep()
                         "Test wake stub wake up from timer is failed, counter = %d", wake_count);
     const uint64_t sleep_time_us = TIMER_TIMEOUT_SEC * 1000000;
     TEST_ASSERT_INT32_WITHIN(80000, sleep_time_us, sleep_time);
-    printf("Test wake stub wakeup from timer is passed.\n");
     return true;
 }
 
@@ -129,7 +127,6 @@ static bool check_ext0_wake_deep_sleep()
     printf("Wake stub sleep time since last enter: %llu (uS)\n", (uint64_t)sleep_time);
     TEST_CHECK(wake_count == WAKE_STUB_ENTER_COUNT, false, 
                         "Test wake stub wake up from timer is failed, counter = %d", wake_count);
-    printf("Test wake stub wakeup from ext0 is passed.\n");
     return true;
 }
 
@@ -149,14 +146,14 @@ void app_main()
             ESP_LOGI(TEST_WAKE_STUB_TAG, "DEEPSLEEP_RESET reason=(%d)\n", (uint16_t)reason);
             if (test_state == TEST_EXT0_WAKEUP_DONE){
                 if (check_ext0_wake_deep_sleep()) {
-                    printf("Wake stub ext0 text is passed. \n");
-                    printf("Setup wake stub timer test. \n");
+                    printf("Test wake stub ext0 is passed.\n");
+                    printf("Setup wake stub timer test.\n");
                     test_state = 0;
                     setup_timer_deep_sleep();
                 }
             } else if (test_state == TEST_TIMER_WAKEUP_DONE) {
                 if (check_timer_wake_deep_sleep()) {
-                    printf("Wake stub timer test passed. \n");
+                    printf("Test wake stub timer is passed.\n");
                     test_passed = true;
                 }
             } else {

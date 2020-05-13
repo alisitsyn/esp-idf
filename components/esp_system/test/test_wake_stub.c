@@ -1,7 +1,13 @@
 #include "unity.h"
 #include "esp_system.h"
 #include <sys/time.h>               // for time measurement
-#include "esp32/rom/rtc.h"          // for rom rtc defines
+
+#ifdef CONFIG_IDF_TARGET_ESP32
+#include "esp32/rom/rtc.h"
+#elif CONFIG_IDF_TARGET_ESP32S2
+#include "esp32s2/rom/rtc.h"
+#endif
+
 #include "esp_log.h"                // for log write functionality
 #include "driver/rtc_io.h"          // for gpio configuration
 #include "esp_sleep.h"              // include sleep related functionality
@@ -20,7 +26,6 @@
 #define TIMER_TIMEOUT_SEC 1
 
 #define TEST_EXT0_GPIO_PIN GPIO_NUM_13
-#define TEST_WS_TAG "TEST_WAKE_STUB"
 
 static RTC_DATA_ATTR int wake_count = 0;
 static RTC_DATA_ATTR esp_sleep_wakeup_cause_t wake_cause = ESP_SLEEP_WAKEUP_UNDEFINED;
@@ -28,7 +33,7 @@ static RTC_DATA_ATTR uint64_t sleep_time = 0;
 static struct timeval tv_start, tv_stop;
 
 static const char* tag = "wake_stub_UnitTestMain";
-static RTC_RODATA_ATTR const char fmt[] = "Wake stub enter count: %d\n";
+//static RTC_RODATA_ATTR const char fmt[] = "Wake stub enter count: %d\n";
 
 static RTC_IRAM_ATTR void wake_stub_timer(void)
 {
@@ -37,13 +42,13 @@ static RTC_IRAM_ATTR void wake_stub_timer(void)
     sleep_time = esp_wake_stub_get_sleep_time_us();
     wake_cause = esp_wake_stub_sleep_get_wakeup_cause();
 
-    if ((wake_count < WAKE_STUB_ENTER_COUNT) && (wake_cause == ESP_SLEEP_WAKEUP_TIMER)) {
+    if (wake_count < WAKE_STUB_ENTER_COUNT) {
         wake_count++;
     } else {
         return;
     }
 
-    ESP_RTC_LOGI(TEST_WS_TAG, "Enter count: %d\n", wake_count);
+    ESP_RTC_LOGI("Enter count: %d\n", wake_count);
     esp_wake_stub_uart_tx_wait_idle(CONFIG_ESP_CONSOLE_UART_NUM);
     // Set the pointer of the new wake stub function.
     // It will be checked in test to make sure the wake stub entered
@@ -60,20 +65,20 @@ static RTC_IRAM_ATTR void wake_stub_ext0(void)
     sleep_time = esp_wake_stub_get_sleep_time_us();
     wake_cause = esp_wake_stub_sleep_get_wakeup_cause();
 
-    if ((wake_count < WAKE_STUB_ENTER_COUNT) && (wake_cause == ESP_SLEEP_WAKEUP_EXT0)) {
+    if (wake_count < WAKE_STUB_ENTER_COUNT) {
         wake_count++;
     } else {
         return;
     }
 
-    ESP_RTC_LOGI(TEST_WS_TAG, "Enter count: %d\n", wake_count);
+    ESP_RTC_LOGI("Enter count: %d\n", wake_count);
     esp_wake_stub_uart_tx_wait_idle(CONFIG_ESP_CONSOLE_UART_NUM);
     // Set the pointer of the new wake stub function.
     // It will be checked in test to make sure the wake stub entered
     REG_WRITE(RTC_ENTRY_ADDR_REG, (uint32_t)&wake_stub_ext0);
     set_rtc_memory_crc(); // update RTC memory CRC
     esp_wake_stub_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
-    esp_wake_stub_enable_ext0_wakeup(GPIO_NUM_13, ESP_EXT0_WAKEUP_LEVEL_HIGH);
+    esp_wake_stub_enable_ext0_wakeup(TEST_EXT0_GPIO_PIN, ESP_EXT0_WAKEUP_LEVEL_HIGH);
     esp_wake_stub_deep_sleep_start();
 }
 
@@ -140,6 +145,8 @@ static void check_timer_wake_stub(void)
     printf("Time since start: %u\n", (int)dt);
     printf("Wake stub count: %u\n", wake_count);
     printf("Wake stub sleep time since last enter: %llu (uS)\n", sleep_time);
+    const uint64_t sleep_time_us = TIMER_TIMEOUT_SEC * 1000000;
+    TEST_ASSERT_INT32_WITHIN(80000, sleep_time_us, sleep_time);
     printf("Wake cause: %d\n", wake_cause);
     TEST_ASSERT(wake_count == WAKE_STUB_ENTER_COUNT);
     printf("Wake stub timer test is done.");

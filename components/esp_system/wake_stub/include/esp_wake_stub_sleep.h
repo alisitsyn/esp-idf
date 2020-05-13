@@ -27,6 +27,17 @@
 #include "esp_sleep.h"		// for esp_sleep_pd_domain_t
 #include "esp_log.h"
 
+//#define RTC_STR(str) (__extension__({static const RTC_RODATA_ATTR char _fmt[] = (str); (const char *)&_fmt;}))
+#define RTC_LOG_FORMAT(letter, format)  LOG_COLOR_ ## letter format LOG_RESET_COLOR "\n"
+
+#define ESP_RTC_LOG( level, format, ... )  if (LOG_LOCAL_LEVEL >= level) { ets_printf(RTC_STR(format), ##__VA_ARGS__); \
+                                                                            esp_wake_stub_uart_tx_wait_idle(0); }
+#define ESP_RTC_LOGE( format, ... )  ESP_RTC_LOG(ESP_LOG_ERROR, RTC_LOG_FORMAT(E, format), ##__VA_ARGS__)
+#define ESP_RTC_LOGW( format, ... )  ESP_RTC_LOG(ESP_LOG_WARN, RTC_LOG_FORMAT(W, format), ##__VA_ARGS__)
+#define ESP_RTC_LOGI( format, ... )  ESP_RTC_LOG(ESP_LOG_INFO, RTC_LOG_FORMAT(I, format), ##__VA_ARGS__)
+#define ESP_RTC_LOGD( format, ... )  ESP_RTC_LOG(ESP_LOG_DEBUG, RTC_LOG_FORMAT(D, format), ##__VA_ARGS__)
+#define ESP_RTC_LOGV( format, ... )  ESP_RTC_LOG(ESP_LOG_VERBOSE, RTC_LOG_FORMAT(V, format), ##__VA_ARGS__)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
