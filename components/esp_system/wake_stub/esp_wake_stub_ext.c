@@ -141,6 +141,8 @@ void wake_stub_ext0_wakeup_prepare()
     // Set level which will trigger wakeup
     SET_PERI_REG_BITS(RTC_CNTL_EXT_WAKEUP_CONF_REG, 0x1,
             wake_stub_s_config.ext0_trigger_level, RTC_CNTL_EXT_WAKEUP0_LV_S);
+    // Set GPIO to be used for wakeup and level which will trigger wakeup
+    // Todo: rtcio_hal_ext0_set_wakeup_pin(rtc_gpio_num, wake_stub_s_config.ext0_trigger_level);
 }
 
 esp_err_t esp_wake_stub_enable_ext0_wakeup(gpio_num_t gpio_num, int level)
@@ -172,16 +174,32 @@ esp_err_t esp_wake_stub_enable_ext1_wakeup(uint64_t mask, esp_sleep_ext1_wakeup_
     return ESP_OK;
 }
 
-void wake_stub_ext1_wakeup_prepare()
+inline uint32_t wake_stub_ext1_get_wakeup_pins(void)
 {
-    // Todo:rtcio_ll_ext1_clear_wakeup_pins(void)
-    // Clear state from previous wakeup
-    REG_SET_BIT(RTC_CNTL_EXT_WAKEUP1_REG, RTC_CNTL_EXT_WAKEUP1_STATUS_CLR);
-    // Todo: rtcio_ll_ext1_set_wakeup_pins(uint32_t mask, int mode)
-    // Set pins to be used for wakeup
-    REG_SET_FIELD(RTC_CNTL_EXT_WAKEUP1_REG, RTC_CNTL_EXT_WAKEUP1_SEL, \
-                                            wake_stub_s_config.ext1_rtc_gpio_mask);
+    return REG_GET_FIELD(RTC_CNTL_EXT_WAKEUP1_STATUS_REG, RTC_CNTL_EXT_WAKEUP1_STATUS);
+}
+
+static inline void wake_stub_ext1_set_wakeup_pins(uint32_t mask, int mode)
+{
+    REG_SET_FIELD(RTC_CNTL_EXT_WAKEUP1_REG, RTC_CNTL_EXT_WAKEUP1_SEL, mask);
     // Set logic function (any low, all high)
     SET_PERI_REG_BITS(RTC_CNTL_EXT_WAKEUP_CONF_REG, 0x1,
-                    wake_stub_s_config.ext1_trigger_mode, RTC_CNTL_EXT_WAKEUP1_LV_S);
+                        mode, RTC_CNTL_EXT_WAKEUP1_LV_S);
+}
+
+static inline void wake_stub_ext1_clear_wakeup_pins(void)
+{
+    REG_SET_BIT(RTC_CNTL_EXT_WAKEUP1_REG, RTC_CNTL_EXT_WAKEUP1_STATUS_CLR);
+}
+
+void wake_stub_ext1_wakeup_prepare()
+{
+    // Todo: rtc_hal_ext1_clear_wakeup_pins(void)
+    // Clear state from previous wakeup
+    wake_stub_ext1_clear_wakeup_pins();
+
+    // Todo: rtcio_ll_ext1_set_wakeup_pins(uint32_t mask, int mode)
+    // Set pins to be used for wakeup
+    wake_stub_ext1_set_wakeup_pins(wake_stub_s_config.ext1_rtc_gpio_mask,
+                                    wake_stub_s_config.ext1_trigger_mode);
 }

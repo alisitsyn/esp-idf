@@ -27,7 +27,7 @@
 #include "esp_sleep.h"		// for esp_sleep_pd_domain_t
 #include "esp_log.h"
 
-//#define RTC_STR(str) (__extension__({static const RTC_RODATA_ATTR char _fmt[] = (str); (const char *)&_fmt;}))
+#define RTC_STR(str) (__extension__({static const RTC_RODATA_ATTR char _fmt[] = (str); (const char *)&_fmt;}))
 #define RTC_LOG_FORMAT(letter, format)  LOG_COLOR_ ## letter format LOG_RESET_COLOR "\n"
 
 #define ESP_RTC_LOG( level, format, ... )  if (LOG_LOCAL_LEVEL >= level) { ets_printf(RTC_STR(format), ##__VA_ARGS__); \

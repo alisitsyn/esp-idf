@@ -26,8 +26,10 @@
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include "esp32/rom/rtc.h"
+#include "esp32/rom/uart.h"
 #elif CONFIG_IDF_TARGET_ESP32S2
 #include "esp32s2/rom/rtc.h"
+#include "esp32s2/rom/uart.h"
 #endif
 
 #include "esp_sleep.h"
@@ -69,7 +71,7 @@ esp_err_t esp_wake_stub_disable_wakeup_source(esp_sleep_source_t source)
 {
     // For most of sources it is enough to set trigger mask in local
     // configuration structure. The actual RTC wake up options
-    // will be updated by esp_sleep_start().
+    // will be updated by wake_stub_rtc_sleep_start().
     if (source == ESP_SLEEP_WAKEUP_ALL) {
         wake_stub_s_config.wakeup_triggers = 0;
     } else if (CHECK_SRC(source, ESP_SLEEP_WAKEUP_TIMER, RTC_TIMER_TRIG_EN)) {
@@ -212,7 +214,7 @@ uint32_t wake_stub_rtc_sleep_start(uint32_t wakeup_opt, uint32_t reject_opt)
     REG_SET_FIELD(RTC_CNTL_WAKEUP_STATE_REG, RTC_CNTL_WAKEUP_ENA, wakeup_opt);
     WRITE_PERI_REG(RTC_CNTL_SLP_REJECT_CONF_REG, reject_opt);
 
-    /* Start entry into sleep mode */
+    // Start entry into sleep mode
     CLEAR_PERI_REG_MASK(RTC_CNTL_STATE0_REG, RTC_CNTL_SLEEP_EN);
     SET_PERI_REG_MASK(RTC_CNTL_STATE0_REG, RTC_CNTL_SLEEP_EN);
 
@@ -231,15 +233,16 @@ uint32_t wake_stub_rtc_sleep_start(uint32_t wakeup_opt, uint32_t reject_opt)
 
 inline void esp_wake_stub_uart_tx_wait_idle(uint8_t uart_no)
 {
-    uint32_t status;
-    do {
-#ifdef CONFIG_IDF_TARGET_ESP32
-        status = READ_PERI_REG(UART_STATUS_REG(uart_no));
-#elif CONFIG_IDF_TARGET_ESP32S2
-        status = READ_PERI_REG(UART_FSM_STATUS_REG(uart_no));
-#endif
-        // wait tx state is non-zero
-    } while ((status & UART_ST_UTX_OUT_M) != 0);
+    uart_tx_wait_idle(uart_no);
+//    uint32_t status;
+//    do {
+//#ifdef CONFIG_IDF_TARGET_ESP32
+//        status = READ_PERI_REG(UART_STATUS_REG(uart_no));
+//#elif CONFIG_IDF_TARGET_ESP32S2
+//        status = READ_PERI_REG(UART_FSM_STATUS_REG(uart_no));
+//#endif
+//        // wait tx state is non-zero
+//    } while ((status & UART_ST_UTX_OUT_M) != 0);
 }
 
 static uint32_t esp_wake_stub_sleep_start(uint32_t pd_flags)
@@ -263,7 +266,7 @@ static uint32_t esp_wake_stub_sleep_start(uint32_t pd_flags)
 
     // Enter sleep
     // Skip initialization of RTC config,
-    // it is assumed initialization is done from regular deep sleep api
+    // it is assumed that initialization is done from regular deep sleep api
     // update just wake up registers
     return wake_stub_rtc_sleep_start(wake_stub_s_config.wakeup_triggers, 0);
 }

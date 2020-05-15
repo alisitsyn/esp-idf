@@ -79,9 +79,14 @@ uint64_t wake_stub_rtc_time_get()
 
 void wake_stub_rtc_sleep_set_wakeup_time(uint64_t time)
 {
-    // change to rtc_ll_wakeup_timer_set(uint64_t t)
+    // change to rtc_cntl_ll_set_wakeup_timer(uint64_t t)
+    // rtc_hal_set_wakeup_timer
     WRITE_PERI_REG(RTC_CNTL_SLP_TIMER0_REG, time & UINT32_MAX);
     WRITE_PERI_REG(RTC_CNTL_SLP_TIMER1_REG, time >> 32);
+#if CONFIG_IDF_TARGET_ESP32S2
+    SET_PERI_REG_MASK(RTC_CNTL_INT_CLR_REG, RTC_CNTL_MAIN_TIMER_INT_CLR_M);
+    SET_PERI_REG_MASK(RTC_CNTL_SLP_TIMER1_REG, RTC_CNTL_MAIN_TIMER_ALARM_EN_M);
+#endif
 }
 
 void wake_stub_timer_wakeup_prepare()

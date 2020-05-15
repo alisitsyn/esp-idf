@@ -22,7 +22,7 @@ set(srcs
     "twai.c"
     "uart.c")
 
-set(includes "include" "${target}/include")
+set(includes "include")
 
 if(${target} STREQUAL "esp32")
     # SDMMC and MCPWM are in ESP32 only.
@@ -80,6 +80,8 @@ idf_component_register(SRCS "${srcs}"
                     REQUIRES esp_pm esp_ringbuf freertos soc hal esp_hw_support
                     LDFRAGMENTS linker.lf)
 # (REQUIRES cannot hide soc headers, since many arguments in the driver headers are chip-dependent)
+
+message(STATUS "Driver include paths: ${includes}")
 
 # uses C11 atomic feature
 set_source_files_properties(spi_master.c PROPERTIES COMPILE_FLAGS -std=gnu11)
