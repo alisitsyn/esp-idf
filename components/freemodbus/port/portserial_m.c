@@ -121,7 +121,7 @@ static USHORT usMBMasterPortSerialRxPoll(size_t xEventSize)
     BOOL xReadStatus = TRUE;
     USHORT usCnt = 0;
 
-    xReadStatus = xMBMasterPortRxSemaTake(1000);
+    xReadStatus = xMBMasterPortRxSemaTake(pdMS_TO_TICKS(CONFIG_FMB_MASTER_TIMEOUT_MS_RESPOND));
     if (xReadStatus) {
         while(xReadStatus && (usCnt++ <= MB_SERIAL_BUF_SIZE)) {
             // Call the Modbus stack callback function and let it fill the stack buffers.
