@@ -63,6 +63,8 @@ uint32_t wake_stub_clk_slowclk_cal_get()
 
 uint64_t wake_stub_rtc_time_get()
 {
+    // update according to targets rtc_time_get() !!!!!!!!!!!!!!!!!!!
+
     SET_PERI_REG_MASK(RTC_CNTL_TIME_UPDATE_REG, RTC_CNTL_TIME_UPDATE);
 #ifdef CONFIG_IDF_TARGET_ESP32
     while (GET_PERI_REG_MASK(RTC_CNTL_TIME_UPDATE_REG, RTC_CNTL_TIME_VALID) == 0) {
