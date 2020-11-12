@@ -1,0 +1,2 @@
+# Wake stab test application for ESP32
+CONFIG_IDF_TARGET="esp32"

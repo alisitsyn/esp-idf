@@ -1,0 +1,2 @@
+# Wake stub test application for ESP32S2
+CONFIG_IDF_TARGET="esp32s2"

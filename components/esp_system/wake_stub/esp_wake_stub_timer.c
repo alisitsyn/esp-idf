@@ -20,11 +20,14 @@
 #include "soc/rtc.h"
 #include "soc/rtc_io_reg.h"
 #include "soc/rtc_cntl_reg.h"
+#include "hal/rtc_cntl_ll.h"
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include "esp32/rom/rtc.h"
 #elif CONFIG_IDF_TARGET_ESP32S2
 #include "esp32s2/rom/rtc.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/rom/rtc.h"
 #endif
 
 #include "esp_wake_stub_private.h"
@@ -47,7 +50,7 @@ void esp_wake_stub_deep_sleep(uint64_t time_in_us)
 
     CLEAR_PERI_REG_MASK(RTC_CNTL_STATE0_REG, RTC_CNTL_SLEEP_EN);
     esp_wake_stub_enable_timer_wakeup(time_in_us);
-    
+
     // Prepare RTC timer for wakeup
     wake_stub_timer_wakeup_prepare();
 
@@ -63,15 +66,13 @@ uint32_t wake_stub_clk_slowclk_cal_get()
 
 uint64_t wake_stub_rtc_time_get()
 {
-    // update according to targets rtc_time_get() !!!!!!!!!!!!!!!!!!!
-
     SET_PERI_REG_MASK(RTC_CNTL_TIME_UPDATE_REG, RTC_CNTL_TIME_UPDATE);
 #ifdef CONFIG_IDF_TARGET_ESP32
     while (GET_PERI_REG_MASK(RTC_CNTL_TIME_UPDATE_REG, RTC_CNTL_TIME_VALID) == 0) {
         ets_delay_us(1); // might take 1 RTC slowclk period, don't flood RTC bus
     }
     SET_PERI_REG_MASK(RTC_CNTL_INT_CLR_REG, RTC_CNTL_TIME_VALID_INT_CLR);
-#elif CONFIG_IDF_TARGET_ESP32S2
+#elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
     // Place code here to get timer value
 #endif
     uint64_t t = READ_PERI_REG(RTC_CNTL_TIME0_REG);
@@ -81,28 +82,22 @@ uint64_t wake_stub_rtc_time_get()
 
 void wake_stub_rtc_sleep_set_wakeup_time(uint64_t time)
 {
-    // change to rtc_cntl_ll_set_wakeup_timer(uint64_t t)
-    // rtc_hal_set_wakeup_timer
-    WRITE_PERI_REG(RTC_CNTL_SLP_TIMER0_REG, time & UINT32_MAX);
-    WRITE_PERI_REG(RTC_CNTL_SLP_TIMER1_REG, time >> 32);
-#if CONFIG_IDF_TARGET_ESP32S2
-    SET_PERI_REG_MASK(RTC_CNTL_INT_CLR_REG, RTC_CNTL_MAIN_TIMER_INT_CLR_M);
-    SET_PERI_REG_MASK(RTC_CNTL_SLP_TIMER1_REG, RTC_CNTL_MAIN_TIMER_ALARM_EN_M);
-#endif
+    // RTC set wake up timer
+    rtc_cntl_ll_set_wakeup_timer(time);
 }
 
 void wake_stub_timer_wakeup_prepare()
 {
-    // Update wakeup options from RTC if needed 
+    // Update wakeup options from RTC if needed
     wake_stub_update_wakeup_options();
-    
+
     // Get microseconds per RTC clock tick (scaled by 2^19)
     uint32_t slow_clk_value = wake_stub_clk_slowclk_cal_get();
-    
+
     // Calculate number of RTC clock ticks until wakeup
     uint64_t rtc_count_delta = ((wake_stub_s_config.sleep_duration * \
                                 (1 << RTC_CLK_CAL_FRACT)) / slow_clk_value);
-    
+
     // Get current count
     uint64_t rtc_curr_count = wake_stub_rtc_time_get();
 

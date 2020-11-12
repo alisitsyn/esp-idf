@@ -8,7 +8,6 @@ entries:
     esp_wake_stub_common (rtc)
     esp_wake_stub_ext (rtc)
     esp_wake_stub_timer (rtc)
-    #esp_wake_stub_ext: wake_stub_rtc_io_num_map (rtc)
 
     esp_err (noflash)
     esp_system:esp_system_abort (noflash)

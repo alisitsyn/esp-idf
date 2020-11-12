@@ -59,7 +59,6 @@ void wake_stub_timer_wakeup_prepare();
 uint32_t wake_stub_rtc_sleep_start(uint32_t wakeup_opt, uint32_t reject_opt);
 uint32_t wake_stub_get_power_down_flags();
 esp_err_t wake_stub_update_wakeup_options();
-void wake_stub_init_default_rtc();
 uint64_t wake_stub_rtc_time_get();
 uint32_t wake_stub_clk_slowclk_cal_get();
 void wake_stub_uart_tx_wait_idle(uint8_t uart_no);

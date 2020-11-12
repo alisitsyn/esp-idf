@@ -3,6 +3,7 @@ import sys
 import subprocess
 import os
 import re
+import glob
 
 from io import StringIO
 import ttfw_idf
@@ -38,11 +39,13 @@ class SymbolInfo(object):
     esp32_rtc_fast_mem_range2 = range(0x400c0000, 0x400c1fff)
     esp32_rtc_slow_mem_range = range(0x50000000, 0x50001fff)
     esp32_rom_mem_range = range(0x40000000, 0x4005ffff)
+    esp32_periph_mem_range = range(0x3ff00000, 0x3ff70000)
 
     esp32s2_rtc_fast_mem_range1 = range(0x3ff9e000, 0x3ff9ffff)
     esp32s2_rtc_fast_mem_range2 = range(0x40070000, 0x40071fff)
     esp32s2_rtc_slow_mem_range = range(0x50000000, 0x50001fff)
     esp32s2_rom_mem_range = range(0x40000000, 0x4001ffff)
+    esp32s2_periph_mem_range = range(0x3ff00000, 0x3ff70000)
 
     def __init__(self, obj, group):
         super(SymbolInfo, self).__init__()
@@ -70,14 +73,16 @@ class SymbolInfo(object):
             if (self.addr in self.esp32_rtc_slow_mem_range or
                self.addr in self.esp32_rtc_fast_mem_range1 or
                self.addr in self.esp32_rtc_fast_mem_range2 or
-               self.addr in self.esp32_rom_mem_range):
+               self.addr in self.esp32_rom_mem_range or
+               self.addr in self.esp32_periph_mem_range):
                 result = True
         elif (target in '"esp32s2"'):
             print(type(target))
             if (self.addr in self.esp32s2_rtc_slow_mem_range or
                self.addr in self.esp32s2_rtc_fast_mem_range1 or
                self.addr in self.esp32s2_rtc_fast_mem_range2 or
-               self.addr in self.esp32s2_rom_mem_range):
+               self.addr in self.esp32s2_rom_mem_range or
+               self.addr in self.esp32s2_periph_mem_range):
                 result = True
         return result
 
@@ -129,14 +134,14 @@ class SymbolList(object):
                 for key, pat in self.list_pattern_dict.items():
                     group, index = self._expect_re(line, self.list_pattern_dict[key])
                     if index != -1 and group is not None:
-                        if key is 'OBJ_NAME':
+                        if key == 'OBJ_NAME':
                             print("{%s}=%s, found in index: %d." % (key, group[0], index))
                             obj_file_name = group[0]
                             break
-                        elif (key is 'OBJ_SYM_SKIP1') or (key is 'OBJ_SYM_SKIP2'):
+                        elif (key == 'OBJ_SYM_SKIP1') or (key == 'OBJ_SYM_SKIP2'):
                             print("Skip pattern %s in {%s}," % (key, obj_file_name))
                             break
-                        elif key is 'OBJ_SYM_NORMAL' and obj_file_name in objects:
+                        elif key == 'OBJ_SYM_NORMAL' and obj_file_name in objects:
                             info = SymbolInfo(obj_file_name, group)
                             symbol_list.append(info)
         except TestError as e:
@@ -145,55 +150,59 @@ class SymbolList(object):
         return symbol_list
 
 
-@ttfw_idf.idf_custom_test(env_tag="Example_WIFI", group="test-apps")
+@ttfw_idf.idf_custom_test(env_tag="Example_GENERIC", group="test-apps")
 def test_check_wake_stub(env, extra_data):
     """
     Wake stub test application
     """
-    try:
-        dut1 = env.get_dut("test_wake_stub", "tools/test_apps/system/wake_stub")
-        target = dut1.app.get_sdkconfig()['CONFIG_IDF_TARGET']
-        print("Target: %s, %s" % (target, dut1.TARGET))
-        curr_path = os.path.dirname(os.path.realpath(__file__))
+    config_files = glob.glob(os.path.join(os.path.dirname(__file__), 'sdkconfig.ci.*'))
+    config_names = [os.path.basename(s).replace('sdkconfig.ci.', '') for s in config_files]
+    rel_proj_path = 'tools/test_apps/system/wake_stub'
+    for name in config_names:
+        print('Checking config "%s"... ' % name)
+        try:
+            dut = env.get_dut('test_wake_stub', rel_proj_path, app_config_name=name)
+            target = dut.app.get_sdkconfig()['CONFIG_IDF_TARGET']
+            print("Target: %s, %s" % (target, dut.TARGET))
+            curr_path = os.path.dirname(os.path.realpath(__file__))
+            bin_file = os.path.join(dut.app.binary_path, "test_wake_stub.elf")
+            print("Check binary: %s for target %s" % (os.path.basename(bin_file), target))
+            output_path = os.path.join(curr_path, "wake_stub_test.log")
+            lib_path = os.path.abspath(curr_path + "/build/esp-idf/esp_system/")
+            lib_file = os.path.join(lib_path, "libesp_system.a")
+            sys_list = SymbolList(lib_file)
+            esp_system_symbols = sys_list.get_symbols(sys_obj_list)
+            print("Checked libesp-system: %s, processed %d symbols." % (lib_file, len(esp_system_symbols)))
 
-        bin_file = os.path.join(dut1.app.binary_path, "test_wake_stub.elf")
-        print("Check binary: %s for target %s" % (os.path.basename(bin_file), target))
-        output_path = os.path.join(curr_path, "wake_stub_test.log")
-        lib_path = os.path.abspath(curr_path + "/build/esp-idf/esp_system/")
-        lib_file = os.path.join(lib_path, "libesp_system.a")
-        sys_list = SymbolList(lib_file)
-        esp_system_symbols = sys_list.get_symbols(sys_obj_list)
-        print("Checked libesp-system: %s, processed %d symbols." % (lib_file, len(esp_system_symbols)))
-
-        bin_list = SymbolList(bin_file)
-        binary_symbols = bin_list.get_symbols(sys_obj_list)
-        with open(output_path, "w") as f:
-            for sys_symbol in esp_system_symbols:
-                for bin_symbol in binary_symbols:
-                    if sys_symbol.name == bin_symbol.name:
-                        if bin_symbol.check_symb_loc(target):
-                            print("Object {%s}, symbol {%s}, placement is correct." % (sys_symbol.object, sys_symbol.name))
-                        else:
-                            print("Object {%s}, symbol {%s}, placement is wrong, addr=0x%x." % (sys_symbol.object, sys_symbol.name, bin_symbol.addr))
-                            raise TestError("Incorrect symbol placement %s" % sys_symbol.name)
-                        for x in bin_symbol.group:
-                            if x is not None:
+            bin_list = SymbolList(bin_file)
+            binary_symbols = bin_list.get_symbols(sys_obj_list)
+            with open(output_path, "w") as f:
+                for sys_symbol in esp_system_symbols:
+                    for bin_symbol in binary_symbols:
+                        if sys_symbol.name == bin_symbol.name:
+                            if bin_symbol.check_symb_loc(target):
+                                print("Object {%s}, symbol {%s}, placement is correct." % (sys_symbol.object, sys_symbol.name))
+                            else:
+                                print("Object {%s}, symbol {%s}, placement is wrong, addr=0x%x." % (sys_symbol.object, sys_symbol.name, bin_symbol.addr))
+                                raise TestError("Incorrect symbol placement %s" % sys_symbol.name)
+                            for x in bin_symbol.group:
+                                if x is not None:
                                     f.write(x + ' ')
-                        f.write('\n')
+                            f.write('\n')
 
-        print("Checked binary: %s, processed %d symbols.\n" % (bin_file, len(esp_system_symbols)))
-        dut1.start_app()
-        dut1.expect("Wake stab enter count: 4")
-        dut1.expect("Test wake stub ext0 is passed.")
-        dut1.expect("Setup wake stub timer test.")
-        dut1.expect("Wake stab enter count: 4")
-        dut1.expect("Test wake stub timer is passed.")
-        dut1.expect("All wake stub tests are passed.")
-        env.close_dut(dut1.name)
+            print("Checked binary: %s, processed %d symbols.\n" % (bin_file, len(esp_system_symbols)))
+            dut.start_app()
+            dut.expect("Wake stab enter count: 4")
+            dut.expect("Test wake stub ext0 is passed.")
+            dut.expect("Setup wake stub timer test.")
+            dut.expect("Wake stab enter count: 4")
+            dut.expect("Test wake stub timer is passed.")
+            dut.expect("All wake stub tests are passed.")
+            env.close_dut(dut.name)
 
-    except TestError as e:
-        print("An error occured during test: %s" % e)
-        sys.exit(1)
+        except TestError as e:
+            print("An error occured during test: %s" % e)
+            sys.exit(1)
 
 
 if __name__ == '__main__':

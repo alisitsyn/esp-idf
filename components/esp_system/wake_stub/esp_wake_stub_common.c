@@ -23,6 +23,7 @@
 #include "soc/rtc_io_channel.h"
 #include "soc/rtc_io_reg.h"
 #include "soc/uart_reg.h"
+#include "hal/uart_ll.h"
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include "esp32/rom/rtc.h"
@@ -30,6 +31,9 @@
 #elif CONFIG_IDF_TARGET_ESP32S2
 #include "esp32s2/rom/rtc.h"
 #include "esp32s2/rom/uart.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/rom/rtc.h"
+#include "esp32s3/rom/uart.h"
 #endif
 
 #include "esp_sleep.h"
@@ -53,14 +57,14 @@ uint64_t esp_wake_stub_get_sleep_time_us()
 {
     // Get number of timer ticks
     // These are saved to control time since last sleep for debugging
-    rtc_start_count = rtc_stop_count; 
+    rtc_start_count = rtc_stop_count;
     rtc_stop_count = wake_stub_rtc_time_get();
-    
+
     const uint64_t ticks = (rtc_stop_count - rtc_start_count);
     // Get calibration value (uS per tick)
     const uint32_t cal = wake_stub_clk_slowclk_cal_get();
 
-    // Calculate time 
+    // Calculate time
     const uint64_t ticks_low = ticks & UINT32_MAX;
     const uint64_t ticks_high = ticks >> 32;
     return ((ticks_low * cal) >> RTC_CLK_CAL_FRACT) +
@@ -92,7 +96,7 @@ esp_err_t esp_wake_stub_disable_wakeup_source(esp_sleep_source_t source)
     return ESP_OK;
 }
 
-// Update local options from RTC set by deep sleep api calls 
+// Update local options from RTC set by deep sleep api calls
 // before went to deep sleep mode
 esp_err_t wake_stub_update_wakeup_options()
 {
@@ -118,10 +122,10 @@ esp_err_t wake_stub_update_wakeup_options()
                                         RTC_CNTL_EXT_WAKEUP1_LV_V, RTC_CNTL_EXT_WAKEUP1_LV_S);
         // Get wake stub address from RTC registers (for debugging)
         wake_stub_s_config.wake_stub_addr = REG_READ(RTC_ENTRY_ADDR_REG);
-    
+
         wake_stub_s_config.rtc_int_flags = REG_READ(RTC_CNTL_INT_ENA_REG);
         wake_stub_s_config.rtc_crc_reg = REG_READ(RTC_CNTL_STORE7_REG);
-        
+
         ESP_RTC_LOGD("wakeup_trig: 0x%.4x", wake_stub_s_config.wakeup_triggers);
         ESP_RTC_LOGD("ext0_gpio_num: 0x%.4x", wake_stub_s_config.ext0_rtc_gpio_num);
         ESP_RTC_LOGD("ext0_trigger_level: 0x%.4x", wake_stub_s_config.ext0_trigger_level);
@@ -157,8 +161,7 @@ uint32_t wake_stub_get_power_down_flags()
     }
 
     // RTC_FAST_MEM is needed for deep sleep stub.
-    // If RTC_FAST_MEM is Auto, keep it powered on, so that deep sleep stub
-    // can run.
+    // If RTC_FAST_MEM is Auto, keep it powered on, so that deep sleep stub can run.
     // In the new chip revision, deep sleep stub will be optional,
     // and this can be changed.
     if (wake_stub_s_config.pd_options[ESP_PD_DOMAIN_RTC_FAST_MEM] == ESP_PD_OPTION_AUTO) {
@@ -170,9 +173,7 @@ uint32_t wake_stub_get_power_down_flags()
     if (wake_stub_s_config.pd_options[ESP_PD_DOMAIN_RTC_PERIPH] == ESP_PD_OPTION_AUTO) {
         if (wake_stub_s_config.wakeup_triggers & RTC_EXT0_TRIG_EN) {
             wake_stub_s_config.pd_options[ESP_PD_DOMAIN_RTC_PERIPH] = ESP_PD_OPTION_ON;
-        } else if (wake_stub_s_config.wakeup_triggers & (RTC_TOUCH_TRIG_EN | RTC_ULP_TRIG_EN)) {
-            // In both rev. 0 and rev. 1 of ESP32, forcing power up of RTC_PERIPH
-            // prevents ULP timer and touch FSMs from working correctly.
+        } else {
             wake_stub_s_config.pd_options[ESP_PD_DOMAIN_RTC_PERIPH] = ESP_PD_OPTION_OFF;
         }
     }
@@ -214,6 +215,9 @@ uint32_t wake_stub_rtc_sleep_start(uint32_t wakeup_opt, uint32_t reject_opt)
     REG_SET_FIELD(RTC_CNTL_WAKEUP_STATE_REG, RTC_CNTL_WAKEUP_ENA, wakeup_opt);
     WRITE_PERI_REG(RTC_CNTL_SLP_REJECT_CONF_REG, reject_opt);
 
+    // Calculate RTC Fast Memory CRC
+    set_rtc_memory_crc();
+
     // Start entry into sleep mode
     CLEAR_PERI_REG_MASK(RTC_CNTL_STATE0_REG, RTC_CNTL_SLEEP_EN);
     SET_PERI_REG_MASK(RTC_CNTL_STATE0_REG, RTC_CNTL_SLEEP_EN);
@@ -224,31 +228,23 @@ uint32_t wake_stub_rtc_sleep_start(uint32_t wakeup_opt, uint32_t reject_opt)
     }
 
     // In deep sleep mode, we never get here
-     uint32_t reject = REG_GET_FIELD(RTC_CNTL_INT_RAW_REG, RTC_CNTL_SLP_REJECT_INT_RAW);
-     SET_PERI_REG_MASK(RTC_CNTL_INT_CLR_REG,
-            RTC_CNTL_SLP_REJECT_INT_CLR | RTC_CNTL_SLP_WAKEUP_INT_CLR);
+    uint32_t reject = REG_GET_FIELD(RTC_CNTL_INT_RAW_REG, RTC_CNTL_SLP_REJECT_INT_RAW);
+    SET_PERI_REG_MASK(RTC_CNTL_INT_CLR_REG,
+                        RTC_CNTL_SLP_REJECT_INT_CLR | RTC_CNTL_SLP_WAKEUP_INT_CLR);
 
     return reject;
 }
 
 inline void esp_wake_stub_uart_tx_wait_idle(uint8_t uart_no)
 {
-    uart_tx_wait_idle(uart_no);
-//    uint32_t status;
-//    do {
-//#ifdef CONFIG_IDF_TARGET_ESP32
-//        status = READ_PERI_REG(UART_STATUS_REG(uart_no));
-//#elif CONFIG_IDF_TARGET_ESP32S2
-//        status = READ_PERI_REG(UART_FSM_STATUS_REG(uart_no));
-//#endif
-//        // wait tx state is non-zero
-//    } while ((status & UART_ST_UTX_OUT_M) != 0);
+    while (!uart_ll_is_tx_idle(UART_LL_GET_HW(uart_no)));
 }
 
 static uint32_t esp_wake_stub_sleep_start(uint32_t pd_flags)
 {
-    // Flush UARTs so that output is not lost due to APB frequency change
+    // Wait while transmission is not completed
     esp_wake_stub_uart_tx_wait_idle(0);
+    esp_wake_stub_uart_tx_wait_idle(1);
 
     // Configure pins for external wake up
     if (wake_stub_s_config.wakeup_triggers & RTC_EXT0_TRIG_EN) {
@@ -273,7 +269,7 @@ static uint32_t esp_wake_stub_sleep_start(uint32_t pd_flags)
 
 void esp_wake_stub_deep_sleep_start()
 {
-    // Get options from RTC registers 
+    // Get options from RTC registers
     wake_stub_update_wakeup_options();
 
     // Decide which power domains can be powered down
