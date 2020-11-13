@@ -50,7 +50,7 @@ extern "C" {
 void esp_wake_stub_deep_sleep_start() __attribute__((noreturn));
 
 /**
- * @brief Enter deep-sleep mode from deep sleep wake stub code 
+ * @brief Enter deep-sleep mode from deep sleep wake stub code
  *
  * The device will automatically wake up after the deep-sleep time
  * Upon waking up, the device calls deep sleep wake stub, and then proceeds
@@ -76,9 +76,9 @@ esp_sleep_wakeup_cause_t esp_wake_stub_sleep_get_wakeup_cause();
  * @brief Enable wakeup using multiple pins
  *
  * This function uses external wakeup feature of RTC controller.
- * The function is similar to esp_sleep_enable_ext1_wakeup, but 
+ * The function is similar to esp_sleep_enable_ext1_wakeup, but
  * can be executed from deep sleep wake stub
- * 
+ *
  * This feature can monitor any number of pins which are in RTC IOs.
  * Once any of the selected pins goes into the state given by mode argument,
  * the chip will be woken up.
@@ -87,7 +87,7 @@ esp_sleep_wakeup_cause_t esp_wake_stub_sleep_get_wakeup_cause();
  *       configured in esp_sleep_start, immediately before
  *       entering sleep mode.
  *
- * @note This function does not change GPIO state it is assumed that they configured 
+ * @note This function does not change GPIO state it is assumed that they configured
  *       by esp_sleep_enable_ext1_wakeup
  *
  * @param mask  bit mask of GPIO numbers which will cause wakeup. Only GPIOs

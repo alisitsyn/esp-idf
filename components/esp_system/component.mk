@@ -10,9 +10,9 @@ endif
 else
 SOC_NAME := $(IDF_TARGET)
 
-COMPONENT_SRCDIRS := .
-COMPONENT_ADD_INCLUDEDIRS := include port/public_compat
-COMPONENT_PRIV_INCLUDEDIRS := port/include port
+COMPONENT_SRCDIRS := . wake_stub
+COMPONENT_ADD_INCLUDEDIRS := include port/public_compat wake_stub/include
+COMPONENT_PRIV_INCLUDEDIRS := port/include port wake_stub/private_include
 COMPONENT_ADD_LDFRAGMENTS += linker.lf app.lf
 
 ifndef CONFIG_IDF_ENV_FPGA
