@@ -1,14 +1,25 @@
+idf_build_get_property(target IDF_TARGET)
 idf_component_register(REQUIRES esp_rom freertos vfs soc)
 
 if(CONFIG_USB_ENABLED)
 
+  if(target STREQUAL "esp32s3")
+      set(tusb_mcu "OPT_MCU_ESP32S3")
+  elseif(target STREQUAL "esp32s2")
+      set(tusb_mcu "OPT_MCU_ESP32S2")
+  else()
+      message("TinyUSB does not support ${target}.")
+      return()
+  endif()
+
   ### variables ###
   #################
   set(compile_options
-      "-DCFG_TUSB_MCU=OPT_MCU_ESP32S2"
+      "-DCFG_TUSB_MCU=${tusb_mcu}"
       "-DCFG_TUSB_DEBUG=${CONFIG_USB_DEBUG_LEVEL}"
       "-Wno-type-limits" # needed for the vanila tinyusb with turned off classes
   )
+
   idf_component_get_property(FREERTOS_ORIG_INCLUDE_PATH freertos
                              ORIG_INCLUDE_PATH)
   set(includes_private
@@ -33,7 +44,7 @@ if(CONFIG_USB_ENABLED)
       "${COMPONENT_DIR}/additions/src/tusb_tasks.c"
       "${COMPONENT_DIR}/additions/src/usb_descriptors.c"
       # tusb:
-      "${COMPONENT_DIR}/tinyusb/src/portable/espressif/esp32s2/dcd_esp32s2.c"
+      "${COMPONENT_DIR}/tinyusb/src/portable/espressif/${target}/dcd_${target}.c"
       "${COMPONENT_DIR}/tinyusb/src/class/cdc/cdc_device.c"
       "${COMPONENT_DIR}/tinyusb/src/class/hid/hid_device.c"
       "${COMPONENT_DIR}/tinyusb/src/class/midi/midi_device.c"

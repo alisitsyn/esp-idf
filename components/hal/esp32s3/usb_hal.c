@@ -12,16 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/*
- * Pin definition header file. The long term plan is to have a single soc_pins.h for all
- * peripherals. Now we temporarily separate these information into periph_pins/channels.h for each
- * peripheral and include them here to avoid developing conflicts in those header files.
- */
 
-#pragma once
+#include "hal/usb_ll.h"
+#include "hal/usb_hal.h"
 
-#include "soc/usb_pins.h"
-#include "soc/gpio_pins.h"
-#include "soc/spi_pins.h"
-#include "soc/sdio_slave_pins.h"
-#include "soc/sdmmc_pins.h"
+void usb_hal_init(usb_hal_context_t *usb)
+{
+    if (usb->use_external_phy) {
+        usb_ll_ext_phy_enable();
+    } else {
+        usb_ll_int_phy_enable();
+    }
+}

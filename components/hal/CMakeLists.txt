@@ -81,6 +81,7 @@ if(NOT BOOTLOADER_BUILD)
             "esp32s3/brownout_hal.c"
             "esp32s3/interrupt_descriptor_table.c"
             "esp32s3/touch_sensor_hal.c")
+            "esp32s3/usb_hal.c"
     endif()
 
     if(${target} STREQUAL "esp32c3")
