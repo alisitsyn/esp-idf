@@ -37,12 +37,15 @@
 #define MB_SERIAL_BUF_SIZE          (CONFIG_FMB_SERIAL_BUF_SIZE)
 
 // common definitions for serial port implementations
-#define MB_SERIAL_TX_TOUT_MS        (100)
+#define MB_SERIAL_TX_TOUT_MS        (2200) // maximum time for transmission of longest allowed frame buffer
 #define MB_SERIAL_TX_TOUT_TICKS     pdMS_TO_TICKS(MB_SERIAL_TX_TOUT_MS) // timeout for transmission
 #define MB_SERIAL_RX_TOUT_MS        (1)
 #define MB_SERIAL_RX_TOUT_TICKS     pdMS_TO_TICKS(MB_SERIAL_RX_TOUT_MS) // timeout for receive
 
 #define MB_SERIAL_RESP_LEN_MIN      (4)
+
+// The task affinity for Modbus stack tasks
+#define MB_PORT_TASK_AFFINITY       (CONFIG_FMB_PORT_TASK_AFFINITY)
 
 #define MB_PORT_CHECK(a, ret_val, str, ...) \
     if (!(a)) { \
@@ -87,6 +90,10 @@ void vMBPortExitCritical(void);
 
 #define MB_PORT_PARITY_GET(parity) ((parity != UART_PARITY_DISABLE) ? \
                                         ((parity == UART_PARITY_ODD) ? MB_PAR_ODD : MB_PAR_EVEN) : MB_PAR_NONE)
+
+void vMBPortSetMode( UCHAR ucMode );
+UCHAR ucMBPortGetMode( void );
+
 #ifdef __cplusplus
 PR_END_EXTERN_C
 #endif /* __cplusplus */

@@ -91,7 +91,7 @@ static USHORT usMBPortSerialRxPoll(size_t xEventSize)
 
     if (bRxStateEnabled) {
         // Get received packet into Rx buffer
-        while(xReadStatus && (usCnt++ <= MB_SERIAL_BUF_SIZE)) {
+        while(xReadStatus && (usCnt++ <= xEventSize)) {
             // Call the Modbus stack callback function and let it fill the buffers.
             xReadStatus = pxMBFrameCBByteReceived(); // callback to execute receive FSM
         }
@@ -141,6 +141,8 @@ static void vUartTask(void *pvParameters)
                     // This flag set in the event means that no more
                     // data received during configured timeout and UART TOUT feature is triggered
                     if (xEvent.timeout_flag) {
+                        // Get buffered data length
+                        ESP_ERROR_CHECK(uart_get_buffered_data_len(ucUartNumber, &xEvent.size));
                         // Read received data and send it to modbus stack
                         usResult = usMBPortSerialRxPoll(xEvent.size);
                         ESP_LOGD(TAG,"Timeout occured, processed: %d bytes", usResult);
@@ -247,8 +249,10 @@ BOOL xMBPortSerialInit(UCHAR ucPORT, ULONG ulBaudRate,
     uart_set_always_rx_timeout(ucUartNumber, true);
 
     // Create a task to handle UART events
-    BaseType_t xStatus = xTaskCreate(vUartTask, "uart_queue_task", MB_SERIAL_TASK_STACK_SIZE,
-                                        NULL, MB_SERIAL_TASK_PRIO, &xMbTaskHandle);
+    BaseType_t xStatus = xTaskCreatePinnedToCore(vUartTask, "uart_queue_task",
+                                                    MB_SERIAL_TASK_STACK_SIZE,
+                                                    NULL, MB_SERIAL_TASK_PRIO,
+                                                    &xMbTaskHandle, MB_PORT_TASK_AFFINITY);
     if (xStatus != pdPASS) {
         vTaskDelete(xMbTaskHandle);
         // Force exit from function with failure

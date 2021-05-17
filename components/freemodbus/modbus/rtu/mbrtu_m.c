@@ -54,7 +54,7 @@ typedef enum
     STATE_M_RX_INIT,              /*!< Receiver is in initial state. */
     STATE_M_RX_IDLE,              /*!< Receiver is in idle state. */
     STATE_M_RX_RCV,               /*!< Frame is beeing received. */
-    STATE_M_RX_ERROR,             /*!< If the frame is invalid. */
+    STATE_M_RX_ERROR              /*!< If the frame is invalid. */
 } eMBMasterRcvState;
 
 typedef enum
@@ -162,7 +162,7 @@ eMBMasterRTUReceive( UCHAR * pucRcvAddress, UCHAR ** pucFrame, USHORT * pusLengt
     if( ( usMasterRcvBufferPos >= MB_RTU_SER_PDU_SIZE_MIN )
         && ( usMBCRC16( ( UCHAR * ) ucMasterRTURcvBuf, usMasterRcvBufferPos ) == 0 ) )
     {
-        /* Save the address field. All frames are passed to the upper layed
+        /* Save the address field. All frames are passed to the upper layer
          * and the decision if a frame is used is done there.
          */
         *pucRcvAddress = ucMasterRTURcvBuf[MB_SER_PDU_ADDR_OFF];
@@ -190,7 +190,7 @@ eMBMasterRTUSend( UCHAR ucSlaveAddress, const UCHAR * pucFrame, USHORT usLength 
     eMBErrorCode    eStatus = MB_ENOERR;
     USHORT          usCRC16;
 
-    if ( ucSlaveAddress > MB_MASTER_TOTAL_SLAVE_NUM ) return MB_EINVAL;
+    if( ucSlaveAddress > MB_MASTER_TOTAL_SLAVE_NUM ) return MB_EINVAL;
 
     ENTER_CRITICAL_SECTION(  );
 
@@ -266,11 +266,16 @@ xMBMasterRTUReceiveFSM( void )
         eSndState = STATE_M_TX_IDLE;
 
         usMasterRcvBufferPos = 0;
-        ucMasterRTURcvBuf[usMasterRcvBufferPos++] = ucByte;
-        eRcvState = STATE_M_RX_RCV;
+        // Skip zero byte at first position (address in response != 0)
+        if( xStatus && ucByte ) {
+            ucMasterRTURcvBuf[usMasterRcvBufferPos++] = ucByte;
+            eRcvState = STATE_M_RX_RCV;
+        }
 
         /* Enable t3.5 timers. */
+#if CONFIG_FMB_TIMER_PORT_ENABLED
         vMBMasterPortTimersT35Enable( );
+#endif
         break;
 
         /* We are currently receiving a frame. Reset the timer after
@@ -289,7 +294,9 @@ xMBMasterRTUReceiveFSM( void )
         {
             eRcvState = STATE_M_RX_ERROR;
         }
+#if CONFIG_FMB_TIMER_PORT_ENABLED
         vMBMasterPortTimersT35Enable( );
+#endif
         break;
     }
     return xStatus;
@@ -329,7 +336,7 @@ xMBMasterRTUTransmitFSM( void )
             eSndState = STATE_M_TX_XFWR;
             /* If the frame is broadcast ,master will enable timer of convert delay,
              * else master will enable timer of respond timeout. */
-            if ( xFrameIsBroadcast == TRUE )
+            if( xFrameIsBroadcast == TRUE )
             {
                 vMBMasterPortTimersConvertDelayEnable( );
             }
@@ -344,7 +351,8 @@ xMBMasterRTUTransmitFSM( void )
     return xNeedPoll;
 }
 
-BOOL MB_PORT_ISR_ATTR xMBMasterRTUTimerExpired(void)
+BOOL MB_PORT_ISR_ATTR
+xMBMasterRTUTimerExpired(void)
 {
     BOOL xNeedPoll = FALSE;
 
@@ -361,7 +369,7 @@ BOOL MB_PORT_ISR_ATTR xMBMasterRTUTimerExpired(void)
         xNeedPoll = xMBMasterPortEventPost(EV_MASTER_FRAME_RECEIVED);
         break;
 
-        /* An error occured while receiving the frame. */
+        /* An error occurred while receiving the frame. */
     case STATE_M_RX_ERROR:
         vMBMasterSetErrorType(EV_ERROR_RECEIVE_DATA);
         xNeedPoll = xMBMasterPortEventPost(EV_MASTER_ERROR_PROCESS);
@@ -380,7 +388,7 @@ BOOL MB_PORT_ISR_ATTR xMBMasterRTUTimerExpired(void)
          * If the frame is broadcast,The master will idle,and if the frame is not
          * broadcast. Notify the listener process error.*/
     case STATE_M_TX_XFWR:
-        if ( xMBMasterRequestIsBroadcast( ) == FALSE ) {
+        if( xMBMasterRequestIsBroadcast( ) == FALSE ) {
             vMBMasterSetErrorType(EV_ERROR_RESPOND_TIMEOUT);
             xNeedPoll = xMBMasterPortEventPost(EV_MASTER_ERROR_PROCESS);
         }
@@ -394,7 +402,7 @@ BOOL MB_PORT_ISR_ATTR xMBMasterRTUTimerExpired(void)
 
     vMBMasterPortTimersDisable( );
     /* If timer mode is convert delay, the master event then turns EV_MASTER_EXECUTE status. */
-    if (xMBMasterGetCurTimerMode() == MB_TMODE_CONVERT_DELAY) {
+    if(xMBMasterGetCurTimerMode() == MB_TMODE_CONVERT_DELAY) {
         xNeedPoll = xMBMasterPortEventPost(EV_MASTER_EXECUTE);
     }
 

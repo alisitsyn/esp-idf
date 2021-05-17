@@ -33,14 +33,6 @@
  * File: $Id: portserial.c,v 1.60 2013/08/13 15:07:05 Armink add Master Functions $
  */
 
-#include "port.h"
-
-/* ----------------------- Modbus includes ----------------------------------*/
-#include "mb_m.h"
-#include "mbport.h"
-#include "mbrtu.h"
-#include "mbconfig.h"
-
 #include <string.h>
 #include "driver/uart.h"
 #include "soc/dport_access.h"
@@ -49,7 +41,16 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
+/* ----------------------- Modbus includes ----------------------------------*/
+#include "port.h"
+#include "mbport.h"
+#include "mb_m.h"
+#include "mbrtu.h"
+#include "mbconfig.h"
 #include "port_serial_master.h"
+/* ----------------------- Defines ------------------------------------------*/
+#define MB_SERIAL_RX_SEMA_TOUT_MS   (1000)
+#define MB_SERIAL_RX_SEMA_TOUT      (pdMS_TO_TICKS(MB_SERIAL_RX_SEMA_TOUT_MS))
 
 /* ----------------------- Static variables ---------------------------------*/
 static const CHAR *TAG = "MB_MASTER_SERIAL";
@@ -64,6 +65,40 @@ static UCHAR ucUartNumber = UART_NUM_MAX - 1;
 static BOOL bRxStateEnabled = FALSE; // Receiver enabled flag
 static BOOL bTxStateEnabled = FALSE; // Transmitter enabled flag
 
+static SemaphoreHandle_t xMasterSemaRxHandle; // Rx blocking semaphore handle
+
+static BOOL xMBMasterPortRxSemaInit( void )
+{
+    xMasterSemaRxHandle = xSemaphoreCreateBinary();
+    MB_PORT_CHECK((xMasterSemaRxHandle != NULL), FALSE , "%s: RX semaphore create failure.", __func__);
+    return TRUE;
+}
+
+static BOOL xMBMasterPortRxSemaTake( LONG lTimeOut )
+{
+    BaseType_t xStatus = pdTRUE;
+    xStatus = xSemaphoreTake(xMasterSemaRxHandle, lTimeOut );
+    MB_PORT_CHECK((xStatus == pdTRUE), FALSE , "%s: RX semaphore take failure.", __func__);
+    ESP_LOGV(MB_PORT_TAG,"%s:Take RX semaphore (%lu ticks).", __func__, lTimeOut);
+    return TRUE;
+}
+
+static void vMBMasterRxSemaRelease( void )
+{
+    BaseType_t xStatus = pdFALSE;
+    xStatus = xSemaphoreGive(xMasterSemaRxHandle);
+    if (xStatus != pdTRUE) {
+        ESP_LOGD(MB_PORT_TAG,"%s:RX semaphore is free.", __func__);
+    }
+}
+
+static BOOL vMBMasterRxSemaIsBusy( void )
+{
+    BaseType_t xStatus = pdFALSE;
+    xStatus = (uxSemaphoreGetCount(xMasterSemaRxHandle) == 0) ? TRUE : FALSE;
+    return xStatus;
+}
+
 void vMBMasterPortSerialEnable(BOOL bRxEnable, BOOL bTxEnable)
 {
     // This function can be called from xMBRTUTransmitFSM() of different task
@@ -74,6 +109,7 @@ void vMBMasterPortSerialEnable(BOOL bRxEnable, BOOL bTxEnable)
     }
     if (bRxEnable) {
         bRxStateEnabled = TRUE;
+        vMBMasterRxSemaRelease();
         vTaskResume(xMbTaskHandle); // Resume receiver task
     } else {
         vTaskSuspend(xMbTaskHandle); // Block receiver task
@@ -86,11 +122,15 @@ static USHORT usMBMasterPortSerialRxPoll(size_t xEventSize)
     BOOL xReadStatus = TRUE;
     USHORT usCnt = 0;
 
-    if (bRxStateEnabled) {
-        while(xReadStatus && (usCnt++ <= MB_SERIAL_BUF_SIZE)) {
+    xReadStatus = xMBMasterPortRxSemaTake(MB_SERIAL_RX_SEMA_TOUT);
+    if (xReadStatus) {
+        while(xReadStatus && (usCnt++ <= xEventSize)) {
             // Call the Modbus stack callback function and let it fill the stack buffers.
             xReadStatus = pxMBMasterFrameCBByteReceived(); // callback to receive FSM
         }
+#if !CONFIG_FMB_TIMER_PORT_ENABLED
+        pxMBMasterPortCBTimerExpired();
+#endif
         // The buffer is transferred into Modbus stack and is not needed here any more
         uart_flush_input(ucUartNumber);
         ESP_LOGD(TAG, "Received data: %d(bytes in buffer)\n", (uint32_t)usCnt);
@@ -114,7 +154,7 @@ BOOL xMBMasterPortSerialTxPoll(void)
         ESP_LOGD(TAG, "MB_TX_buffer sent: (%d) bytes.", (uint16_t)(usCount - 1));
         // Waits while UART sending the packet
         esp_err_t xTxStatus = uart_wait_tx_done(ucUartNumber, MB_SERIAL_TX_TOUT_TICKS);
-        vMBMasterPortSerialEnable( TRUE, FALSE );
+        vMBMasterPortSerialEnable(TRUE, FALSE);
         MB_PORT_CHECK((xTxStatus == ESP_OK), FALSE, "mb serial sent buffer failure.");
         return TRUE;
     }
@@ -136,9 +176,20 @@ static void vUartTask(void* pvParameters)
                     // This flag set in the event means that no more
                     // data received during configured timeout and UART TOUT feature is triggered
                     if (xEvent.timeout_flag) {
+                        // Response is received but previous packet processing is pending
+                        // Do not wait completion of processing and just discard received data
+                        // as incorrect (fragmentation of response).
+                        if (vMBMasterRxSemaIsBusy()) {
+                            uart_flush_input(ucUartNumber);
+                            break;
+                        }
+                        // Get buffered data length
+                        ESP_ERROR_CHECK(uart_get_buffered_data_len(ucUartNumber, &xEvent.size));
                         // Read received data and send it to modbus stack
                         usResult = usMBMasterPortSerialRxPoll(xEvent.size);
                         ESP_LOGD(TAG,"Timeout occured, processed: %d bytes", usResult);
+                        // Block receiver task until data is not processed
+                        vTaskSuspend(NULL);
                     }
                     break;
                 //Event of HW FIFO overflow detected
@@ -238,10 +289,13 @@ BOOL xMBMasterPortSerialInit( UCHAR ucPORT, ULONG ulBaudRate, UCHAR ucDataBits, 
 
     // Set always timeout flag to trigger timeout interrupt even after rx fifo full
     uart_set_always_rx_timeout(ucUartNumber, true);
-
+    MB_PORT_CHECK((xMBMasterPortRxSemaInit()), FALSE,
+                        "mb serial RX semaphore create fail.");
     // Create a task to handle UART events
-    BaseType_t xStatus = xTaskCreate(vUartTask, "uart_queue_task", MB_SERIAL_TASK_STACK_SIZE,
-                                        NULL, MB_SERIAL_TASK_PRIO, &xMbTaskHandle);
+    BaseType_t xStatus = xTaskCreatePinnedToCore(vUartTask, "uart_queue_task",
+                                                    MB_SERIAL_TASK_STACK_SIZE,
+                                                    NULL, MB_SERIAL_TASK_PRIO,
+                                                    &xMbTaskHandle, MB_PORT_TASK_AFFINITY);
     if (xStatus != pdPASS) {
         vTaskDelete(xMbTaskHandle);
         // Force exit from function with failure

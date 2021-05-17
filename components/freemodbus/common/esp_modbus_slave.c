@@ -29,7 +29,7 @@
 #define MB_ID_BYTE3(id) ((uint8_t)(((uint32_t)(id) >> 24) & 0xFF))
 
 #define MB_CONTROLLER_SLAVE_ID (CONFIG_FMB_CONTROLLER_SLAVE_ID)
-#define MB_SLAVE_ID_SHORT      (MB_ID_BYTE3(CONFIG_FMB_CONTROLLER_SLAVE_ID))
+#define MB_SLAVE_ID_SHORT      (MB_ID_BYTE3(MB_CONTROLLER_SLAVE_ID))
 
 // Slave ID constant
 static uint8_t mb_slave_id[] = { MB_ID_BYTE0(MB_CONTROLLER_SLAVE_ID),
@@ -91,8 +91,7 @@ esp_err_t mbc_slave_destroy(void)
     // Call the slave port destroy function
     error = slave_interface_ptr->destroy();
     MB_SLAVE_CHECK((error == ESP_OK), 
-                    ESP_ERR_INVALID_STATE, 
-                    "SERIAL slave destroy failure error=(0x%x).", error);
+                    error, "Slave destroy failure error=(0x%x).", error);
     return error;
 }
 
@@ -110,8 +109,7 @@ esp_err_t mbc_slave_setup(void* comm_info)
                     "Slave interface is not correctly initialized.");
     error = slave_interface_ptr->setup(comm_info);
     MB_SLAVE_CHECK((error == ESP_OK), 
-                    ESP_ERR_INVALID_STATE, 
-                    "SERIAL slave setup failure error=(0x%x).", error);
+                    error, "Slave setup failure error=(0x%x).", error);
     return error;
 }
 
@@ -134,7 +132,7 @@ esp_err_t mbc_slave_start(void)
 #endif
     error = slave_interface_ptr->start();
     MB_SLAVE_CHECK((error == ESP_OK), 
-                    error, "SERIAL slave start failure error=(0x%x).", error);
+                    error, "Slave start failure error=(0x%x).", error);
     return error;
 } 
 
@@ -167,7 +165,7 @@ esp_err_t mbc_slave_get_param_info(mb_param_info_t* reg_info, uint32_t timeout)
                     "Slave interface is not correctly initialized.");
     error = slave_interface_ptr->get_param_info(reg_info, timeout);
     MB_SLAVE_CHECK((error == ESP_OK), 
-                    error, "SERIAL slave get parameter info failure error=(0x%x).", error);
+                    error, "Slave get parameter info failure error=(0x%x).", error);
     return error;
 }
 
@@ -185,7 +183,7 @@ esp_err_t mbc_slave_set_descriptor(mb_register_area_descriptor_t descr_data)
                     "Slave interface is not correctly initialized.");
     error = slave_interface_ptr->set_descriptor(descr_data);
     MB_SLAVE_CHECK((error == ESP_OK), 
-                    error, "SERIAL slave set descriptor failure error=(0x%x).", error);
+                    error, "Slave set descriptor failure error=(0x%x).", error);
     return error;
 }
 

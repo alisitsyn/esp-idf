@@ -75,8 +75,8 @@ eMBMasterReqReadDiscreteInputs( UCHAR ucSndAddr, USHORT usDiscreteAddr, USHORT u
     UCHAR                 *ucMBFrame;
     eMBMasterReqErrCode    eErrStatus = MB_MRE_NO_ERR;
 
-    if ( ucSndAddr > MB_MASTER_TOTAL_SLAVE_NUM ) eErrStatus = MB_MRE_ILL_ARG;
-    else if ( xMBMasterRunResTake( lTimeOut ) == FALSE ) eErrStatus = MB_MRE_MASTER_BUSY;
+    if( ucSndAddr > MB_MASTER_TOTAL_SLAVE_NUM ) eErrStatus = MB_MRE_ILL_ARG;
+    else if( xMBMasterRunResTake( lTimeOut ) == FALSE ) eErrStatus = MB_MRE_MASTER_BUSY;
     else
     {
         vMBMasterGetPDUSndBuf(&ucMBFrame);
@@ -105,7 +105,7 @@ eMBMasterFuncReadDiscreteInputs( UCHAR * pucFrame, USHORT * usLen )
     eMBErrorCode    eRegStatus;
 
     /* If this request is broadcast, and it's read mode. This request don't need execute. */
-    if ( xMBMasterRequestIsBroadcast() )
+    if( xMBMasterRequestIsBroadcast() )
     {
         eStatus = MB_EX_NONE;
     }
@@ -133,11 +133,10 @@ eMBMasterFuncReadDiscreteInputs( UCHAR * pucFrame, USHORT * usLen )
         /* Check if the number of registers to read is valid. If not
          * return Modbus illegal data value exception. 
          */
-        if ((usDiscreteCnt >= 1) && ucNBytes == pucFrame[MB_PDU_FUNC_READ_DISCCNT_OFF])
+        if((usDiscreteCnt >= 1) && ucNBytes == pucFrame[MB_PDU_FUNC_READ_DISCCNT_OFF])
         {
             /* Make callback to fill the buffer. */
             eRegStatus = eMBMasterRegDiscreteCB( &pucFrame[MB_PDU_FUNC_READ_VALUES_OFF], usRegAddress, usDiscreteCnt );
-
             /* If an error occured convert it into a Modbus exception. */
             if( eRegStatus != MB_ENOERR )
             {

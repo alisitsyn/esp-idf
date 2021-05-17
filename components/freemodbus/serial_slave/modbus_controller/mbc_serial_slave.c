@@ -28,7 +28,7 @@
 #include "port_serial_slave.h"
 
 // Shared pointer to interface structure
-static mb_slave_interface_t* mbs_interface_ptr = NULL; // &default_interface_inst;
+static mb_slave_interface_t* mbs_interface_ptr = NULL;
 
 // Modbus task function
 static void modbus_slave_task(void *pvParameters)
@@ -136,6 +136,7 @@ static esp_err_t mbc_serial_slave_destroy(void)
     MB_SLAVE_CHECK((mb_error == MB_ENOERR), ESP_ERR_INVALID_STATE,
             "mb stack close failure returned (0x%x).", (uint32_t)mb_error);
     free(mbs_interface_ptr);
+    vMBPortSetMode((UCHAR)MB_PORT_INACTIVE);
     mbs_interface_ptr = NULL;
     return ESP_OK;
 }
@@ -488,12 +489,13 @@ esp_err_t mbc_serial_slave_create(mb_port_type_t port_type, void** handler)
     MB_SLAVE_CHECK((mbs_opts->mbs_notification_queue_handle != NULL),
             ESP_ERR_NO_MEM, "mb notify queue creation error.");
     // Create Modbus controller task
-    status = xTaskCreate((void*)&modbus_slave_task,
+    status = xTaskCreatePinnedToCore((void*)&modbus_slave_task,
                             "modbus_slave_task",
                             MB_CONTROLLER_STACK_SIZE,
                             NULL,
                             MB_CONTROLLER_PRIORITY,
-                            &mbs_opts->mbs_task_handle);
+                            &mbs_opts->mbs_task_handle,
+                            MB_PORT_TASK_AFFINITY);
     if (status != pdPASS) {
         vTaskDelete(mbs_opts->mbs_task_handle);
         MB_SLAVE_CHECK((status == pdPASS), ESP_ERR_NO_MEM,

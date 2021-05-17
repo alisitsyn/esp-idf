@@ -60,7 +60,7 @@ PR_BEGIN_EXTERN_C
 /*! \brief If Modbus Slave RTU support is enabled. */
 #define MB_SLAVE_RTU_ENABLED                    (  CONFIG_FMB_COMM_MODE_RTU_EN )
 /*! \brief If Modbus Slave TCP support is enabled. */
-#define MB_TCP_ENABLED                          (  1 )
+#define MB_TCP_ENABLED                          (  0 )
 #if !CONFIG_FMB_COMM_MODE_ASCII_EN && !CONFIG_FMB_COMM_MODE_RTU_EN
 #error "None of Modbus communication mode is enabled. Please enable one of ASCII or RTU mode in Kconfig."
 #endif
