@@ -21,6 +21,7 @@
 #include "soc/rtc_io_reg.h"
 #include "soc/rtc_cntl_reg.h"
 #include "hal/rtc_cntl_ll.h"
+#include "esp_rom_sys.h"
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include "esp32/rom/rtc.h"
@@ -69,7 +70,7 @@ uint64_t wake_stub_rtc_time_get()
     SET_PERI_REG_MASK(RTC_CNTL_TIME_UPDATE_REG, RTC_CNTL_TIME_UPDATE);
 #ifdef CONFIG_IDF_TARGET_ESP32
     while (GET_PERI_REG_MASK(RTC_CNTL_TIME_UPDATE_REG, RTC_CNTL_TIME_VALID) == 0) {
-        ets_delay_us(1); // might take 1 RTC slowclk period, don't flood RTC bus
+        esp_rom_delay_us(1);
     }
     SET_PERI_REG_MASK(RTC_CNTL_INT_CLR_REG, RTC_CNTL_TIME_VALID_INT_CLR);
 #elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3

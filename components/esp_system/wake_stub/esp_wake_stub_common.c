@@ -81,6 +81,7 @@ esp_err_t esp_wake_stub_disable_wakeup_source(esp_sleep_source_t source)
     } else if (CHECK_SRC(source, ESP_SLEEP_WAKEUP_TIMER, RTC_TIMER_TRIG_EN)) {
         wake_stub_s_config.wakeup_triggers &= ~RTC_TIMER_TRIG_EN;
         wake_stub_s_config.sleep_duration = 0;
+#if SOC_PM_SUPPORT_EXT_WAKEUP
     } else if (CHECK_SRC(source, ESP_SLEEP_WAKEUP_EXT0, RTC_EXT0_TRIG_EN)) {
         wake_stub_s_config.ext0_rtc_gpio_num = 0;
         wake_stub_s_config.ext0_trigger_level = 0;
@@ -89,6 +90,7 @@ esp_err_t esp_wake_stub_disable_wakeup_source(esp_sleep_source_t source)
         wake_stub_s_config.ext1_rtc_gpio_mask = 0;
         wake_stub_s_config.ext1_trigger_mode = 0;
         wake_stub_s_config.wakeup_triggers &= ~RTC_EXT1_TRIG_EN;
+#endif
     } else {
         ESP_RTC_LOGE("Incorrect wakeup source (%d) to disable.", (int) source);
         return ESP_ERR_INVALID_STATE;
@@ -152,13 +154,18 @@ uint32_t wake_stub_get_power_down_flags()
     // RTC_SLOW_MEM is Auto, keep it powered up as well.
 
     // These labels are defined in the linker script:
-    extern int _rtc_data_start, _rtc_data_end, _rtc_bss_start, _rtc_bss_end;
+    extern int _rtc_data_start;
+    extern int _rtc_data_end;
+    extern int _rtc_bss_start;
+    extern int _rtc_bss_end;
 
+#if SOC_RTC_SLOW_MEM_SUPPORTED
     if (wake_stub_s_config.pd_options[ESP_PD_DOMAIN_RTC_SLOW_MEM] == ESP_PD_OPTION_AUTO ||
             &_rtc_data_end > &_rtc_data_start ||
             &_rtc_bss_end > &_rtc_bss_start) {
         wake_stub_s_config.pd_options[ESP_PD_DOMAIN_RTC_SLOW_MEM] = ESP_PD_OPTION_ON;
     }
+#endif
 
     // RTC_FAST_MEM is needed for deep sleep stub.
     // If RTC_FAST_MEM is Auto, keep it powered on, so that deep sleep stub can run.
@@ -194,20 +201,32 @@ uint32_t wake_stub_get_power_down_flags()
 
 esp_sleep_wakeup_cause_t esp_wake_stub_sleep_get_wakeup_cause()
 {
+    esp_sleep_wakeup_cause_t esp_wakeup_cause = ESP_SLEEP_WAKEUP_UNDEFINED;
+#ifdef CONFIG_IDF_TARGET_ESP32
     uint32_t wakeup_cause = REG_GET_FIELD(RTC_CNTL_WAKEUP_STATE_REG, RTC_CNTL_WAKEUP_CAUSE);
-    if (wakeup_cause & RTC_EXT0_TRIG_EN) {
-        return ESP_SLEEP_WAKEUP_EXT0;
+#else
+    uint32_t wakeup_cause = REG_GET_FIELD(RTC_CNTL_SLP_WAKEUP_CAUSE_REG, RTC_CNTL_WAKEUP_CAUSE);
+#endif
+    if (wakeup_cause & RTC_TIMER_TRIG_EN) {
+        esp_wakeup_cause = ESP_SLEEP_WAKEUP_TIMER;
+#if SOC_PM_SUPPORT_EXT_WAKEUP
+    } else if (wakeup_cause & RTC_EXT0_TRIG_EN) {
+        esp_wakeup_cause = ESP_SLEEP_WAKEUP_EXT0;
     } else if (wakeup_cause & RTC_EXT1_TRIG_EN) {
-        return ESP_SLEEP_WAKEUP_EXT1;
-    } else if (wakeup_cause & RTC_TIMER_TRIG_EN) {
-        return ESP_SLEEP_WAKEUP_TIMER;
+        esp_wakeup_cause = ESP_SLEEP_WAKEUP_EXT1;
+#endif
+#if SOC_TOUCH_PAD_WAKE_SUPPORTED
     } else if (wakeup_cause & RTC_TOUCH_TRIG_EN) {
-        return ESP_SLEEP_WAKEUP_TOUCHPAD;
+        esp_wakeup_cause = ESP_SLEEP_WAKEUP_TOUCHPAD;
+#endif
+#if SOC_ULP_SUPPORTED
     } else if (wakeup_cause & RTC_ULP_TRIG_EN) {
-        return ESP_SLEEP_WAKEUP_ULP;
+        esp_wakeup_cause = ESP_SLEEP_WAKEUP_ULP;
+#endif
     } else {
-        return ESP_SLEEP_WAKEUP_UNDEFINED;
+        esp_wakeup_cause = ESP_SLEEP_WAKEUP_UNDEFINED;
     }
+    return esp_wakeup_cause;
 }
 
 uint32_t wake_stub_rtc_sleep_start(uint32_t wakeup_opt, uint32_t reject_opt)
@@ -284,5 +303,3 @@ void esp_wake_stub_deep_sleep_start()
         ;
     }
 }
-
-

@@ -162,4 +162,3 @@ void esp_wake_stub_uart_tx_wait_idle(uint8_t uart_no);
 #ifdef __cplusplus
 }
 #endif
-

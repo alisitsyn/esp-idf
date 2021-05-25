@@ -1,13 +1,13 @@
 # Need Python 3 string formatting functions
-import sys
-import subprocess
+import glob
 import os
 import re
-import glob
-
+import subprocess
+import sys
 from io import StringIO
-import ttfw_idf
+from typing import Any, List, Optional, Tuple
 
+import ttfw_idf
 
 # The list of objects to check in listing
 sys_obj_list = ('test_wake_stub.elf', 'esp_wake_stub_timer.c.obj',
@@ -17,7 +17,7 @@ sys_obj_list = ('test_wake_stub.elf', 'esp_wake_stub_timer.c.obj',
 class TestError(RuntimeError):
     """Test runtime error class
     """
-    def __init__(self, message):
+    def __init__(self, message): # type: (str) -> None
         """Constructor for core dump error
         """
         super(TestError, self).__init__(message)
@@ -45,9 +45,9 @@ class SymbolInfo(object):
     esp32s2_rtc_fast_mem_range2 = range(0x40070000, 0x40071fff)
     esp32s2_rtc_slow_mem_range = range(0x50000000, 0x50001fff)
     esp32s2_rom_mem_range = range(0x40000000, 0x4001ffff)
-    esp32s2_periph_mem_range = range(0x3ff00000, 0x3ff70000)
+    esp32s2_periph_mem_range = range(0x3f400000, 0x3f4fffff)
 
-    def __init__(self, obj, group):
+    def __init__(self, obj, group): # type: (str, Tuple[str, ...]) -> None
         super(SymbolInfo, self).__init__()
         if group is not None and len(group) <= self.SYMB_INFO_GROUP_LEN + 1:
             self.addr = self._get_int(group[self.SYMB_INFO_ADDR])
@@ -60,14 +60,14 @@ class SymbolInfo(object):
             self.object = obj
 
     @staticmethod
-    def _get_int(str_hex):
+    def _get_int(str_hex): # type: (str) -> int
         try:
             _int_val = int(str_hex, base=16)
         except IndexError:
             _int_val = -1
         return _int_val
 
-    def check_symb_loc(self, target):
+    def check_symb_loc(self, target): # type: (str) -> int
         result = False
         if (target in '"esp32"') or (target is None):
             if (self.addr in self.esp32_rtc_slow_mem_range or
@@ -77,7 +77,6 @@ class SymbolInfo(object):
                self.addr in self.esp32_periph_mem_range):
                 result = True
         elif (target in '"esp32s2"'):
-            print(type(target))
             if (self.addr in self.esp32s2_rtc_slow_mem_range or
                self.addr in self.esp32s2_rtc_fast_mem_range1 or
                self.addr in self.esp32s2_rtc_fast_mem_range2 or
@@ -100,11 +99,11 @@ class SymbolList(object):
                          'OBJ_SYM_NORMAL': (r'([a-zA-Z0-9]+)\s([w|g|l\s]{1,2})\s+([O|F|d|\s]{1})\s+'
                                             r'([\*\.a-zA-Z0-9_]+)\s+([a-zA-Z0-9]+)\s([\.]*.+\.)*(\w+)$')}
 
-    def __init__(self, bin_file):
+    def __init__(self, bin_file): # type: (str) -> None
         super(SymbolList, self).__init__()
         self.input_file = bin_file
 
-    def _expect_re(self, data, pattern):
+    def _expect_re(self, data, pattern): # type: (str, str) -> Tuple[Optional[Tuple[str, ...]], int]
         """
         check if re pattern is matched in data
         :param data: data to process
@@ -121,9 +120,10 @@ class SymbolList(object):
             index = -1
         return ret, index
 
-    def get_symbols(self, objects=None):
+
+    def get_symbols(self, objects): # type: (Tuple[str, ...]) -> List[SymbolInfo]
         try:
-            dump = StringIO(subprocess.check_output(["xtensa-esp32-elf-objdump", "-t", self.input_file]).decode())
+            dump = StringIO(subprocess.check_output(['xtensa-esp32-elf-objdump', '-t', self.input_file]).decode())
             symbol_list = []
             obj_file_name = os.path.basename(self.input_file)
             # save dump name
@@ -135,23 +135,22 @@ class SymbolList(object):
                     group, index = self._expect_re(line, self.list_pattern_dict[key])
                     if index != -1 and group is not None:
                         if key == 'OBJ_NAME':
-                            print("{%s}=%s, found in index: %d." % (key, group[0], index))
+                            print('{%s}=%s, found in index: %d.' % (key, group[0], index))
                             obj_file_name = group[0]
                             break
                         elif (key == 'OBJ_SYM_SKIP1') or (key == 'OBJ_SYM_SKIP2'):
-                            print("Skip pattern %s in {%s}," % (key, obj_file_name))
                             break
                         elif key == 'OBJ_SYM_NORMAL' and obj_file_name in objects:
                             info = SymbolInfo(obj_file_name, group)
                             symbol_list.append(info)
         except TestError as e:
-            print("Can not get symbols for %s\nERROR: %s" % (dump.name, e))
+            print('Can not get symbols for %s\nERROR: %s' % (dump.name, e))
             sys.exit(1)
         return symbol_list
 
 
-@ttfw_idf.idf_custom_test(env_tag="Example_GENERIC", group="test-apps")
-def test_check_wake_stub(env, extra_data):
+@ttfw_idf.idf_custom_test(env_tag='Example_GENERIC', target=['esp32', 'esp32s2'], group='test-apps')
+def test_check_wake_stub(env, extra_data): # type: ignore
     """
     Wake stub test application
     """
@@ -163,45 +162,44 @@ def test_check_wake_stub(env, extra_data):
         try:
             dut = env.get_dut('test_wake_stub', rel_proj_path, app_config_name=name)
             target = dut.app.get_sdkconfig()['CONFIG_IDF_TARGET']
-            print("Target: %s, %s" % (target, dut.TARGET))
+            print('Target: %s, %s' % (target, dut.TARGET))
             curr_path = os.path.dirname(os.path.realpath(__file__))
-            bin_file = os.path.join(dut.app.binary_path, "test_wake_stub.elf")
-            print("Check binary: %s for target %s" % (os.path.basename(bin_file), target))
-            output_path = os.path.join(curr_path, "wake_stub_test.log")
-            lib_path = os.path.abspath(curr_path + "/build/esp-idf/esp_system/")
-            lib_file = os.path.join(lib_path, "libesp_system.a")
+            bin_file = os.path.join(dut.app.binary_path, 'test_wake_stub.elf')
+            print('Check binary: %s for target %s' % (os.path.basename(bin_file), target))
+            output_path = os.path.join(curr_path, 'wake_stub_test.log')
+            lib_path = os.path.abspath(curr_path + '/build/esp-idf/esp_system/')
+            lib_file = os.path.join(lib_path, 'libesp_system.a')
             sys_list = SymbolList(lib_file)
             esp_system_symbols = sys_list.get_symbols(sys_obj_list)
-            print("Checked libesp-system: %s, processed %d symbols." % (lib_file, len(esp_system_symbols)))
-
+            print('Checked libesp-system: %s, processed %d symbols.' % (lib_file, len(esp_system_symbols)))
             bin_list = SymbolList(bin_file)
             binary_symbols = bin_list.get_symbols(sys_obj_list)
-            with open(output_path, "w") as f:
+            with open(output_path, 'w') as f:
                 for sys_symbol in esp_system_symbols:
                     for bin_symbol in binary_symbols:
                         if sys_symbol.name == bin_symbol.name:
                             if bin_symbol.check_symb_loc(target):
-                                print("Object {%s}, symbol {%s}, placement is correct." % (sys_symbol.object, sys_symbol.name))
+                                print('Object {%s}, symbol {%s}, placement is correct.' % (sys_symbol.object, sys_symbol.name))
                             else:
-                                print("Object {%s}, symbol {%s}, placement is wrong, addr=0x%x." % (sys_symbol.object, sys_symbol.name, bin_symbol.addr))
-                                raise TestError("Incorrect symbol placement %s" % sys_symbol.name)
+                                print('Object {%s}, symbol {%s}, placement is wrong, addr=0x%x.' % (sys_symbol.object, sys_symbol.name, bin_symbol.addr))
+                                raise TestError('Incorrect symbol placement %s' % sys_symbol.name)
                             for x in bin_symbol.group:
                                 if x is not None:
                                     f.write(x + ' ')
                             f.write('\n')
 
-            print("Checked binary: %s, processed %d symbols.\n" % (bin_file, len(esp_system_symbols)))
+            print('Checked binary: %s, processed %d symbols.\n' % (bin_file, len(esp_system_symbols)))
             dut.start_app()
-            dut.expect("Wake stab enter count: 4")
-            dut.expect("Test wake stub ext0 is passed.")
-            dut.expect("Setup wake stub timer test.")
-            dut.expect("Wake stab enter count: 4")
-            dut.expect("Test wake stub timer is passed.")
-            dut.expect("All wake stub tests are passed.")
+            dut.expect('Wake stab enter count: 4')
+            dut.expect('Test wake stub ext0 is passed.')
+            dut.expect('Setup wake stub timer test.')
+            dut.expect('Wake stab enter count: 4')
+            dut.expect('Test wake stub timer is passed.')
+            dut.expect('All wake stub tests are passed.')
             env.close_dut(dut.name)
 
         except TestError as e:
-            print("An error occured during test: %s" % e)
+            print('An error occured during test: %s' % e)
             sys.exit(1)
 
 
