@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: BSD-3-Clause
  *
- * SPDX-FileContributor: 2016-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileContributor: 2016-2022 Espressif Systems (Shanghai) CO LTD
  */
 /*
  * FreeModbus Libary: ESP32 TCP Port
@@ -117,8 +117,9 @@ xMBMasterTCPPortInit( USHORT usTCPPort )
     xMbPortConfig.usPort = usTCPPort;
     xMbPortConfig.usMbSlaveInfoCount = 0;
     xMbPortConfig.ucCurSlaveIndex = 1;
+    xMbPortConfig.pxMbSlaveCurrInfo = NULL;
 
-    xMbPortConfig.xConnectQueue = xQueueCreate(2, sizeof(CHAR*));
+    xMbPortConfig.xConnectQueue = xQueueCreate(2, sizeof(MbSlaveAddrInfo_t));
     if (xMbPortConfig.xConnectQueue == 0)
     {
         // Queue was not created and must not be used.
@@ -147,9 +148,30 @@ xMBMasterTCPPortInit( USHORT usTCPPort )
     return bOkay;
 }
 
+static MbSlaveInfo_t* vMBTCPPortMasterFindSlaveInfo(UCHAR ucSlaveAddr)
+{
+    int xIndex;
+    BOOL xFound = false;
+    for (xIndex = 0; xIndex < xMbPortConfig.usMbSlaveInfoCount; xIndex++) {
+        if (xMbPortConfig.pxMbSlaveInfo[xIndex]->ucSlaveAddr == ucSlaveAddr) {
+            xMbPortConfig.pxMbSlaveCurrInfo = xMbPortConfig.pxMbSlaveInfo[xIndex];
+            xFound = TRUE;
+            xMbPortConfig.ucCurSlaveIndex = xIndex;
+        }
+    }
+    if (!xFound) {
+        xMbPortConfig.pxMbSlaveCurrInfo = NULL;
+        ESP_LOGE(MB_TCP_MASTER_PORT_TAG, "Slave info for short address %d not found.", ucSlaveAddr);
+    }
+    return xMbPortConfig.pxMbSlaveCurrInfo;
+}
+
 static MbSlaveInfo_t* vMBTCPPortMasterGetCurrInfo(void)
 {
-    return xMbPortConfig.pxMbSlaveInfo[xMbPortConfig.ucCurSlaveIndex - 1];
+    if (!xMbPortConfig.pxMbSlaveCurrInfo) {
+        ESP_LOGE(MB_TCP_MASTER_PORT_TAG, "Incorrect current slave info.");
+    }
+    return xMbPortConfig.pxMbSlaveCurrInfo;
 }
 
 // Start Modbus event state machine
@@ -470,15 +492,19 @@ static BOOL xMBTCPPortMasterCheckHost(const CHAR* pcHostStr, ip_addr_t* pxHostAd
     return TRUE;
 }
 
-BOOL xMBTCPPortMasterAddSlaveIp(const CHAR* pcIpStr)
+BOOL xMBTCPPortMasterAddSlaveIp(const USHORT usIndex, const CHAR* pcIpStr, UCHAR ucSlaveAddress)
 {
     BOOL xRes = FALSE;
+    MbSlaveAddrInfo_t xSlaveAddrInfo = { 0 };
     MB_PORT_CHECK(xMbPortConfig.xConnectQueue != NULL, FALSE, "Wrong slave IP address to add.");
-    if (pcIpStr) {
+    if (pcIpStr && (usIndex != 0xFF)) {
         xRes = xMBTCPPortMasterCheckHost(pcIpStr, NULL);
     }
     if (xRes || !pcIpStr) {
-        BaseType_t xStatus = xQueueSend(xMbPortConfig.xConnectQueue, (const void*)&pcIpStr, 100);
+        xSlaveAddrInfo.pcIPAddr = pcIpStr;
+        xSlaveAddrInfo.usIndex = usIndex;
+        xSlaveAddrInfo.ucSlaveAddr = ucSlaveAddress;
+        BaseType_t xStatus = xQueueSend(xMbPortConfig.xConnectQueue, (void*)&xSlaveAddrInfo, 100);
         MB_PORT_CHECK((xStatus == pdTRUE), FALSE, "FAIL to add slave IP address: [%s].", pcIpStr);
     }
     return xRes;
@@ -637,9 +663,9 @@ static void xMBTCPPortMasterFsmSetError(eMBMasterErrorEventType xErrType, eMBMas
 
 static void vMBTCPPortMasterTask(void *pvParameters)
 {
-    CHAR* pcAddrStr = NULL;
     MbSlaveInfo_t* pxInfo;
     MbSlaveInfo_t* pxCurrInfo;
+
     fd_set xConnSet;
     fd_set xReadSet;
     int xMaxSd = 0;
@@ -649,12 +675,13 @@ static void vMBTCPPortMasterTask(void *pvParameters)
 
     // Register each slave in the connection info structure
     while (1) {
-        BaseType_t xStatus = xQueueReceive(xMbPortConfig.xConnectQueue, (void*)&pcAddrStr, pdMS_TO_TICKS(MB_EVENT_WAIT_TOUT_MS));
-        xMBTCPPortMasterCheckShutdown();
+        MbSlaveAddrInfo_t xSlaveAddrInfo = { 0 };
+        BaseType_t xStatus = xQueueReceive(xMbPortConfig.xConnectQueue, (void*)&xSlaveAddrInfo, pdMS_TO_TICKS(MB_EVENT_WAIT_TOUT_MS));
+	    xMBTCPPortMasterCheckShutdown();
         if (xStatus != pdTRUE) {
             ESP_LOGE(MB_TCP_MASTER_PORT_TAG, "Fail to register slave IP.");
         } else {
-            if (pcAddrStr == NULL && xMbPortConfig.usMbSlaveInfoCount) {
+            if (xSlaveAddrInfo.pcIPAddr == NULL && xMbPortConfig.usMbSlaveInfoCount && xSlaveAddrInfo.usIndex == 0xFF) {
                 break;
             }
             if (xMbPortConfig.usMbSlaveInfoCount > MB_TCP_PORT_MAX_CONN) {
@@ -676,17 +703,18 @@ static void vMBTCPPortMasterTask(void *pvParameters)
                 break;
             }
             pxInfo->usRcvPos = 0;
-            pxInfo->pcIpAddr = pcAddrStr;
+            pxInfo->pcIpAddr = xSlaveAddrInfo.pcIPAddr;
             pxInfo->xSockId = -1;
             pxInfo->xError = -1;
             pxInfo->xRecvTimeStamp = xMBTCPGetTimeStamp();
             pxInfo->xSendTimeStamp = xMBTCPGetTimeStamp();
             pxInfo->xMbProto = MB_PROTO_TCP;
-            pxInfo->xIndex = xMbPortConfig.usMbSlaveInfoCount;
+            pxInfo->ucSlaveAddr = xSlaveAddrInfo.ucSlaveAddr;
+            pxInfo->xIndex = xSlaveAddrInfo.usIndex; //xMbPortConfig.usMbSlaveInfoCount;
             pxInfo->usTidCnt = (USHORT)(xMbPortConfig.usMbSlaveInfoCount << 8U);
             // Register slave
             xMbPortConfig.pxMbSlaveInfo[xMbPortConfig.usMbSlaveInfoCount++] = pxInfo;
-            ESP_LOGI(MB_TCP_MASTER_PORT_TAG, "Add slave IP: %s", pcAddrStr);
+            ESP_LOGI(MB_TCP_MASTER_PORT_TAG, "Add slave IP: %s", xSlaveAddrInfo.pcIPAddr);
         }
     }
 
@@ -724,9 +752,9 @@ static void vMBTCPPortMasterTask(void *pvParameters)
                             ESP_LOGE(MB_TCP_MASTER_PORT_TAG, MB_SLAVE_FMT(" connect failed, error = %d."),
                                                                             pxInfo->xIndex, pxInfo->xSockId,
                                                                             (char*)pxInfo->pcIpAddr, xErr);
-                                if (usSlaveConnCnt) {
-                                    usSlaveConnCnt--;
-                                }
+                            if (usSlaveConnCnt) {
+                                usSlaveConnCnt--;
+                            }
                         }
                         break;
                     case ERR_OK:
@@ -940,8 +968,8 @@ BOOL
 xMBMasterTCPPortSendResponse( UCHAR * pucMBTCPFrame, USHORT usTCPLength )
 {
     BOOL bFrameSent = FALSE;
-    xMbPortConfig.ucCurSlaveIndex = ucMBMasterGetDestAddress();
-    MbSlaveInfo_t* pxInfo = vMBTCPPortMasterGetCurrInfo();
+    USHORT ucCurSlaveIndex = ucMBMasterGetDestAddress();
+    MbSlaveInfo_t* pxInfo = vMBTCPPortMasterFindSlaveInfo(ucCurSlaveIndex);
 
     // If socket active then send data
     if (pxInfo->xSockId > -1) {
