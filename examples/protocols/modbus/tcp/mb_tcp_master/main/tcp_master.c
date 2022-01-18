@@ -134,6 +134,7 @@ char* slave_ip_address_table[] = {
 #elif CONFIG_MB_MDNS_IP_RESOLVER
     NULL,
     NULL,
+    NULL,
     NULL
 #endif
 };

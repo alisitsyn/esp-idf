@@ -710,7 +710,7 @@ static void vMBTCPPortMasterTask(void *pvParameters)
             pxInfo->xSendTimeStamp = xMBTCPGetTimeStamp();
             pxInfo->xMbProto = MB_PROTO_TCP;
             pxInfo->ucSlaveAddr = xSlaveAddrInfo.ucSlaveAddr;
-            pxInfo->xIndex = xSlaveAddrInfo.usIndex; //xMbPortConfig.usMbSlaveInfoCount;
+            pxInfo->xIndex = xSlaveAddrInfo.usIndex;
             pxInfo->usTidCnt = (USHORT)(xMbPortConfig.usMbSlaveInfoCount << 8U);
             // Register slave
             xMbPortConfig.pxMbSlaveInfo[xMbPortConfig.usMbSlaveInfoCount++] = pxInfo;
@@ -971,33 +971,38 @@ xMBMasterTCPPortSendResponse( UCHAR * pucMBTCPFrame, USHORT usTCPLength )
     USHORT ucCurSlaveIndex = ucMBMasterGetDestAddress();
     MbSlaveInfo_t* pxInfo = vMBTCPPortMasterFindSlaveInfo(ucCurSlaveIndex);
 
-    // If socket active then send data
-    if (pxInfo->xSockId > -1) {
-        // Apply TID field to the frame before send
-        pucMBTCPFrame[MB_TCP_TID] = (UCHAR)(pxInfo->usTidCnt >> 8U);
-        pucMBTCPFrame[MB_TCP_TID + 1] = (UCHAR)(pxInfo->usTidCnt & 0xFF);
-        int xRes = xMBMasterTCPPortWritePoll(pxInfo, pucMBTCPFrame, usTCPLength, MB_TCP_SEND_TIMEOUT_MS);
-        if (xRes < 0) {
-            ESP_LOGE(MB_TCP_MASTER_PORT_TAG, MB_SLAVE_FMT(", send data failure, err(errno) = %d(%d)."),
-                                           pxInfo->xIndex, pxInfo->xSockId, pxInfo->pcIpAddr, xRes, errno);
-            bFrameSent = FALSE;
-            pxInfo->xError = xRes;
-        } else {
-            bFrameSent = TRUE;
-            ESP_LOGD(MB_TCP_MASTER_PORT_TAG, MB_SLAVE_FMT(", send data successful: TID=0x%02x, %d (bytes), errno %d"),
-                                                pxInfo->xIndex, pxInfo->xSockId, pxInfo->pcIpAddr, pxInfo->usTidCnt, xRes, errno);
-            pxInfo->xError = 0;
-            pxInfo->usRcvPos = 0;
-            if (pxInfo->usTidCnt < (USHRT_MAX - 1)) {
-                pxInfo->usTidCnt++;
-            } else {
-                pxInfo->usTidCnt = (USHORT)(pxInfo->xIndex << 8U);
-            }
-        }
-        pxInfo->xSendTimeStamp = xMBTCPGetTimeStamp();
-    } else {
-        ESP_LOGD(MB_TCP_MASTER_PORT_TAG, MB_SLAVE_FMT(", send to died slave, error = %d"),
+    // If the slave is correct and active then send data
+    // otherwise treat slave as died and skip
+    if (pxInfo != NULL) {
+        if (pxInfo->xSockId < 0) {
+            ESP_LOGD(MB_TCP_MASTER_PORT_TAG, MB_SLAVE_FMT(", send to died slave, error = %d"),
                                                   pxInfo->xIndex, pxInfo->xSockId, pxInfo->pcIpAddr, pxInfo->xError);
+        } else {
+            // Apply TID field to the frame before send
+            pucMBTCPFrame[MB_TCP_TID] = (UCHAR)(pxInfo->usTidCnt >> 8U);
+            pucMBTCPFrame[MB_TCP_TID + 1] = (UCHAR)(pxInfo->usTidCnt & 0xFF);
+            int xRes = xMBMasterTCPPortWritePoll(pxInfo, pucMBTCPFrame, usTCPLength, MB_TCP_SEND_TIMEOUT_MS);
+            if (xRes < 0) {
+                ESP_LOGE(MB_TCP_MASTER_PORT_TAG, MB_SLAVE_FMT(", send data failure, err(errno) = %d(%d)."),
+                                            pxInfo->xIndex, pxInfo->xSockId, pxInfo->pcIpAddr, xRes, errno);
+                bFrameSent = FALSE;
+                pxInfo->xError = xRes;
+            } else {
+                bFrameSent = TRUE;
+                ESP_LOGD(MB_TCP_MASTER_PORT_TAG, MB_SLAVE_FMT(", send data successful: TID=0x%02x, %d (bytes), errno %d"),
+                                                    pxInfo->xIndex, pxInfo->xSockId, pxInfo->pcIpAddr, pxInfo->usTidCnt, xRes, errno);
+                pxInfo->xError = 0;
+                pxInfo->usRcvPos = 0;
+                if (pxInfo->usTidCnt < (USHRT_MAX - 1)) {
+                    pxInfo->usTidCnt++;
+                } else {
+                    pxInfo->usTidCnt = (USHORT)(pxInfo->xIndex << 8U);
+                }
+            }
+            pxInfo->xSendTimeStamp = xMBTCPGetTimeStamp();
+        }
+    } else {
+        ESP_LOGD(MB_TCP_MASTER_PORT_TAG, "Send data to died slave, address = %d", ucCurSlaveIndex);
     }
     vMBMasterPortTimersRespondTimeoutEnable();
     xMBMasterPortEventPost(EV_MASTER_FRAME_SENT);
