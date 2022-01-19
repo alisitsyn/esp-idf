@@ -35,7 +35,7 @@ static uint8_t mb_slave_id[] = { MB_ID_BYTE0(MB_CONTROLLER_SLAVE_ID),
 
 // Common interface pointer for slave port
 static mb_slave_interface_t* slave_interface_ptr = NULL;
-static const char *TAG = "MB_CONTROLLER_SLAVE";
+static const char TAG[] __attribute__((unused)) = "MB_CONTROLLER_SLAVE";
 
 // Searches the register in the area specified by type, returns descriptor if found, else NULL
 static mb_descr_entry_t* mbc_slave_find_reg_descriptor(mb_param_type_t type, uint16_t addr, size_t regs)
